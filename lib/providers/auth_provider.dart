@@ -49,6 +49,9 @@ class AuthProvider with ChangeNotifier {
       _lastError = null;
       notifyListeners();
 
+      debugPrint('🔐 Attempting login for: $email');
+      debugPrint('🌐 API Base URL: ${ApiService.baseUrl}');
+      
       final result = await _authService.login(email, password);
       
       if (result['success'] == true) {
@@ -61,19 +64,21 @@ class AuthProvider with ChangeNotifier {
 
         _loading = false;
         _lastError = null;
+        debugPrint('✅ Login successful for: ${_user?.email}');
         notifyListeners();
         return true;
       } else {
         _loading = false;
         _lastError = result['error'] ?? 'Login failed';
-        debugPrint('Login error: $_lastError');
+        debugPrint('❌ Login error: $_lastError');
         notifyListeners();
         return false;
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       _loading = false;
       _lastError = 'Unexpected error: $e';
-      debugPrint('Login exception: $e');
+      debugPrint('❌ Login exception: $e');
+      debugPrint('Stack trace: $stackTrace');
       notifyListeners();
       return false;
     }

@@ -42,6 +42,7 @@ class ApiService {
 
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
+        debugPrint('🌐 API Request: ${options.method} ${options.baseUrl}${options.path}');
         final prefs = await SharedPreferences.getInstance();
         final token = prefs.getString('token');
         if (token != null) {
@@ -49,7 +50,16 @@ class ApiService {
         }
         return handler.next(options);
       },
+      onResponse: (response, handler) {
+        debugPrint('✅ API Response: ${response.statusCode} ${response.requestOptions.path}');
+        return handler.next(response);
+      },
       onError: (error, handler) {
+        debugPrint('❌ API Error: ${error.type} - ${error.message}');
+        if (error.response != null) {
+          debugPrint('   Status: ${error.response?.statusCode}');
+          debugPrint('   Data: ${error.response?.data}');
+        }
         if (error.response?.statusCode == 401) {
           // Handle unauthorized - could trigger logout
         }
