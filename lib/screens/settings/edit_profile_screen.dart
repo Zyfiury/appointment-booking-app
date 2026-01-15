@@ -358,24 +358,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               const SizedBox(height: 24),
               FadeInWidget(
                 child: AnimatedButton(
+                  text: 'Save Changes',
                   onPressed: _saving ? null : _saveProfile,
-                  child: _saving
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                      : const Text(
-                          'Save Changes',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
+                  isLoading: _saving,
+                  backgroundColor: AppTheme.primaryColor,
                 ),
               ),
             ],

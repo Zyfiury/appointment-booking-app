@@ -212,24 +212,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           ),
           const SizedBox(height: 24),
           AnimatedButton(
+            text: 'Send Reset Link',
             onPressed: _loading ? null : _sendResetEmail,
-            child: _loading
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                  )
-                : const Text(
-                    'Send Reset Link',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
+            isLoading: _loading,
+            backgroundColor: AppTheme.primaryColor,
           ),
           const SizedBox(height: 16),
           TextButton(
@@ -278,20 +264,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         ),
         const SizedBox(height: 32),
         AnimatedButton(
+          text: 'Back to Login',
           onPressed: () {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(builder: (context) => const LoginScreen()),
             );
           },
-          child: const Text(
-            'Back to Login',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Colors.white,
-            ),
-          ),
+          backgroundColor: AppTheme.primaryColor,
         ),
       ],
     );
