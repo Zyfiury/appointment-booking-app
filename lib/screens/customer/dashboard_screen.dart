@@ -13,6 +13,7 @@ import 'book_appointment_screen.dart';
 import 'my_appointments_screen.dart';
 import 'search_screen.dart';
 import 'map_screen.dart';
+import 'payment_history_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -302,56 +303,100 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      FadeInWidget(
-                        duration: const Duration(milliseconds: 1000),
-                        child: LayeredCard(
-                          margin: EdgeInsets.zero,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 18,
-                          ),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              PageRouteBuilder(
-                                pageBuilder: (context, animation, secondaryAnimation) =>
-                                    const MyAppointmentsScreen(),
-                                transitionsBuilder:
-                                    (context, animation, secondaryAnimation, child) {
-                                  return SlideTransition(
-                                    position: Tween<Offset>(
-                                      begin: const Offset(1.0, 0.0),
-                                      end: Offset.zero,
-                                    ).animate(animation),
-                                    child: child,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FadeInWidget(
+                              duration: const Duration(milliseconds: 1000),
+                              child: LayeredCard(
+                                margin: EdgeInsets.zero,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 16,
+                                ),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    PageRouteBuilder(
+                                      pageBuilder: (context, animation, secondaryAnimation) =>
+                                          const MyAppointmentsScreen(),
+                                      transitionsBuilder:
+                                          (context, animation, secondaryAnimation, child) {
+                                        return SlideTransition(
+                                          position: Tween<Offset>(
+                                            begin: const Offset(1.0, 0.0),
+                                            end: Offset.zero,
+                                          ).animate(animation),
+                                          child: child,
+                                        );
+                                      },
+                                    ),
                                   );
                                 },
-                              ),
-                            );
-                          },
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.calendar_today,
-                                color: AppTheme.primaryColor,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 8),
-                              Flexible(
-                                child: Text(
-                                  'My Appointments',
-                                  style: TextStyle(
-                                    color: AppTheme.textPrimary,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.calendar_today,
+                                      color: AppTheme.primaryColor,
+                                      size: 18,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Flexible(
+                                      child: Text(
+                                        'My Appointments',
+                                        style: TextStyle(
+                                          color: AppTheme.textPrimary,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ],
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FadeInWidget(
+                              duration: const Duration(milliseconds: 1100),
+                              child: LayeredCard(
+                                margin: EdgeInsets.zero,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 16,
+                                ),
+                                onTap: () {
+                                  Navigator.pushNamed(context, '/payment-history');
+                                },
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.payment,
+                                      color: AppTheme.primaryColor,
+                                      size: 18,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Flexible(
+                                      child: Text(
+                                        'Payments',
+                                        style: TextStyle(
+                                          color: AppTheme.textPrimary,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),

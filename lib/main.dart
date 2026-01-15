@@ -16,6 +16,7 @@ import 'screens/settings/settings_screen.dart';
 import 'screens/customer/search_screen.dart';
 import 'screens/customer/map_screen.dart';
 import 'screens/customer/payment_screen.dart';
+import 'screens/customer/payment_history_screen.dart';
 import 'screens/customer/review_screen.dart';
 import 'screens/settings/edit_profile_screen.dart';
 import 'screens/settings/help_support_screen.dart';
@@ -55,6 +56,7 @@ class MyApp extends StatelessWidget {
           '/search': (context) => const SearchScreen(),
           '/map': (context) => const MapScreen(),
           '/help-support': (context) => const HelpSupportScreen(),
+          '/payment-history': (context) => const PaymentHistoryScreen(),
         },
       ),
     );

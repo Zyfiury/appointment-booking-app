@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/appointment.dart';
 import '../../services/payment_service.dart';
 import '../../theme/app_theme.dart';
+import '../../config/app_config.dart';
 import '../../widgets/animated_button.dart';
 import '../../widgets/layered_card.dart';
 import '../../widgets/fade_in_widget.dart';
@@ -35,12 +36,102 @@ class _PaymentScreenState extends State<PaymentScreen> {
     super.dispose();
   }
 
+  bool _validateCardNumber(String cardNumber) {
+    // Remove spaces and dashes
+    final cleaned = cardNumber.replaceAll(RegExp(r'[\s-]'), '');
+    // Check if it's 13-19 digits (standard card length)
+    if (cleaned.length < 13 || cleaned.length > 19) {
+      return false;
+    }
+    // Luhn algorithm check
+    int sum = 0;
+    bool alternate = false;
+    for (int i = cleaned.length - 1; i >= 0; i--) {
+      int n = int.parse(cleaned[i]);
+      if (alternate) {
+        n *= 2;
+        if (n > 9) {
+          n = (n % 10) + 1;
+        }
+      }
+      sum += n;
+      alternate = !alternate;
+    }
+    return (sum % 10) == 0;
+  }
+
+  bool _validateExpiry(String expiry) {
+    // Format: MM/YY
+    final parts = expiry.split('/');
+    if (parts.length != 2) return false;
+    
+    try {
+      final month = int.parse(parts[0]);
+      final year = int.parse(parts[1]);
+      
+      if (month < 1 || month > 12) return false;
+      
+      // Convert YY to full year (assuming 20XX)
+      final fullYear = 2000 + year;
+      final now = DateTime.now();
+      final expiryDate = DateTime(fullYear, month + 1, 0); // Last day of month
+      
+      return expiryDate.isAfter(now);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  bool _validateCVC(String cvc) {
+    // CVC is 3-4 digits
+    return RegExp(r'^\d{3,4}$').hasMatch(cvc);
+  }
+
+  String _formatCardNumber(String input) {
+    // Remove all non-digits
+    final digitsOnly = input.replaceAll(RegExp(r'\D'), '');
+    // Add spaces every 4 digits
+    final buffer = StringBuffer();
+    for (int i = 0; i < digitsOnly.length; i++) {
+      if (i > 0 && i % 4 == 0) {
+        buffer.write(' ');
+      }
+      buffer.write(digitsOnly[i]);
+    }
+    return buffer.toString();
+  }
+
+  String _formatExpiry(String input) {
+    // Remove all non-digits
+    final digitsOnly = input.replaceAll(RegExp(r'\D'), '');
+    if (digitsOnly.length >= 2) {
+      return '${digitsOnly.substring(0, 2)}/${digitsOnly.length > 2 ? digitsOnly.substring(2, 4) : ''}';
+    }
+    return digitsOnly;
+  }
+
   Future<void> _processPayment() async {
-    if (_cardNumberController.text.isEmpty ||
-        _expiryController.text.isEmpty ||
-        _cvcController.text.isEmpty) {
+    // Validate card number
+    final cardNumber = _cardNumberController.text.replaceAll(RegExp(r'[\s-]'), '');
+    if (!_validateCardNumber(cardNumber)) {
       setState(() {
-        _error = 'Please enter valid card details';
+        _error = 'Please enter a valid card number';
+      });
+      return;
+    }
+
+    // Validate expiry
+    if (!_validateExpiry(_expiryController.text)) {
+      setState(() {
+        _error = 'Please enter a valid expiry date (MM/YY)';
+      });
+      return;
+    }
+
+    // Validate CVC
+    if (!_validateCVC(_cvcController.text)) {
+      setState(() {
+        _error = 'Please enter a valid CVC (3-4 digits)';
       });
       return;
     }
@@ -58,35 +149,54 @@ class _PaymentScreenState extends State<PaymentScreen> {
       );
 
       // In production, integrate with Stripe SDK here
-      // For now, simulate payment confirmation
+      // For now, simulate payment confirmation with validation
       await Future.delayed(const Duration(seconds: 2));
 
       // Confirm payment on backend
-      await _paymentService.confirmPayment(
+      final payment = await _paymentService.confirmPayment(
         paymentIntentId: paymentIntent['id'] ?? paymentIntent['paymentId'],
         paymentMethodId: 'card',
       );
 
       if (mounted) {
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const MyAppointmentsScreen(),
-          ),
-          (route) => false,
-        );
+        // Show success message
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Payment successful!'),
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Payment successful! \$${payment.amount.toStringAsFixed(2)} paid',
+                  ),
+                ),
+              ],
+            ),
             backgroundColor: AppTheme.accentColor,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 3),
           ),
         );
+
+        // Navigate back to appointments
+        Navigator.pop(context);
       }
     } catch (e) {
       setState(() {
         _processing = false;
         _error = 'Payment failed: ${e.toString()}';
       });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Payment failed: ${e.toString()}'),
+            backgroundColor: AppTheme.errorColor,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     }
   }
 
@@ -189,7 +299,24 @@ class _PaymentScreenState extends State<PaymentScreen> {
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,
                           ),
+                          prefixIcon: const Icon(
+                            Icons.credit_card,
+                            color: AppTheme.textSecondary,
+                          ),
                         ),
+                        onChanged: (value) {
+                          // Format card number as user types
+                          final formatted = _formatCardNumber(value);
+                          if (formatted != value) {
+                            _cardNumberController.value = TextEditingValue(
+                              text: formatted,
+                              selection: TextSelection.collapsed(
+                                offset: formatted.length,
+                              ),
+                            );
+                          }
+                        },
+                        maxLength: 19, // 16 digits + 3 spaces
                       ),
                       const SizedBox(height: 16),
                       Row(
@@ -209,6 +336,19 @@ class _PaymentScreenState extends State<PaymentScreen> {
                                   borderSide: BorderSide.none,
                                 ),
                               ),
+                              onChanged: (value) {
+                                // Format expiry as user types
+                                final formatted = _formatExpiry(value);
+                                if (formatted != value) {
+                                  _expiryController.value = TextEditingValue(
+                                    text: formatted,
+                                    selection: TextSelection.collapsed(
+                                      offset: formatted.length,
+                                    ),
+                                  );
+                                }
+                              },
+                              maxLength: 5,
                             ),
                           ),
                           const SizedBox(width: 16),
@@ -227,7 +367,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
                                   borderRadius: BorderRadius.circular(12),
                                   borderSide: BorderSide.none,
                                 ),
+                                prefixIcon: const Icon(
+                                  Icons.lock_outline,
+                                  color: AppTheme.textSecondary,
+                                ),
                               ),
+                              maxLength: 4,
                             ),
                           ),
                         ],
@@ -280,6 +425,48 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   backgroundColor: AppTheme.primaryColor,
                 ),
               ),
+              const SizedBox(height: 16),
+              // Test Card Info (Development)
+              if (!AppConfig.isProduction)
+                FadeInWidget(
+                  duration: const Duration(milliseconds: 500),
+                  child: LayeredCard(
+                    margin: EdgeInsets.zero,
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              color: AppTheme.warningColor,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Test Mode',
+                              style: TextStyle(
+                                color: AppTheme.warningColor,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Use test card: 4242 4242 4242 4242\nExpiry: Any future date (e.g., 12/25)\nCVC: Any 3 digits (e.g., 123)',
+                          style: TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 12,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               const SizedBox(height: 16),
               // Security Note
               FadeInWidget(
