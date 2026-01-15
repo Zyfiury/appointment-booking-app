@@ -20,7 +20,14 @@ class ApiService {
       return AppConfig.apiBaseUrl;
     }
     
-    // Development URLs (automatic detection)
+    // Default to production API (Railway deployment)
+    // To use local server, set: --dart-define=API_URL=http://10.0.2.2:5000/api
+    const productionUrl = 'https://accurate-solace-app22.up.railway.app/api';
+    if (productionUrl.isNotEmpty) {
+      return productionUrl;
+    }
+    
+    // Fallback to development URLs (only if production URL is not set)
     if (kIsWeb) {
       return 'http://localhost:5000/api';
     }

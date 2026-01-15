@@ -1,81 +1,82 @@
-# Fix Railway Deployment - Step by Step
+# 🚂 Railway Deployment Fix
 
-## The Problem
-Railway is trying to build from the root of your repository instead of the `server` folder where your Node.js backend is located.
+## Issue
+Railway build is failing with Docker connection errors. This is usually a temporary Railway infrastructure issue.
 
-## Solution: Configure Railway Service Root Directory
+## Quick Fix
 
-### Step 1: Update Railway Service Settings
+### Option 1: Retry Deployment (Recommended)
+1. Go to Railway dashboard
+2. Click on your service
+3. Click "Redeploy" or trigger a new deployment
+4. Wait for build to complete
 
-1. **Go to your Railway project**: https://railway.app
-2. **Click on your service** (the purple box "appointment-booking-app")
-3. **Go to the "Settings" tab** (top navigation)
-4. **Scroll down to "Root Directory"**
-5. **Set Root Directory to**: `server`
-6. **Click "Save"**
-
-### Step 2: Change Builder (if needed)
-
-1. Still in **Settings** tab
-2. Find **"Builder"** section
-3. Change from **"Railpack"** to **"Nixpacks"**
-4. **Click "Save"**
-
-### Step 3: Verify Build Settings
-
-In the **Settings** tab, verify:
-- **Root Directory**: `server`
-- **Build Command**: `npm install && npm run build` (or leave empty for auto-detect)
+### Option 2: Check Build Configuration
+Make sure Railway is using the correct settings:
+- **Root Directory**: `server` (if your server folder is in a subdirectory)
+- **Build Command**: `npm install && npm run build`
 - **Start Command**: `npm start`
 
-### Step 4: Redeploy
+### Option 3: Check Railway Logs
+1. Go to Railway dashboard
+2. Click on "Deployments"
+3. Check the latest deployment logs
+4. Look for specific error messages
 
-1. Go back to **"Architecture"** or **"Deploy Logs"** tab
-2. Click **"Redeploy"** or wait for automatic redeploy after git push
-3. The build should now work!
+## Common Railway Issues
+
+### Issue 1: Docker Build Failed
+**Error**: `failed to build: listing workers for Build: failed to list workers`
+
+**Solution**: 
+- This is usually a temporary Railway infrastructure issue
+- Wait a few minutes and retry
+- Or trigger a new deployment
+
+### Issue 2: Build Timeout
+**Error**: Build takes too long
+
+**Solution**:
+- Check if `node_modules` is being uploaded (should be in `.gitignore`)
+- Optimize build process
+- Check for large files
+
+### Issue 3: Port Configuration
+**Error**: Server not starting
+
+**Solution**:
+- Railway automatically sets `PORT` environment variable
+- Make sure your server uses `process.env.PORT || 5000`
+- ✅ Already configured in `server/index.ts`
+
+## Verify Deployment
+
+1. **Check if server is running:**
+   ```bash
+   curl https://accurate-solace-app22.up.railway.app/api/health
+   ```
+
+2. **Expected response:**
+   ```json
+   {"status":"ok","message":"Server is running"}
+   ```
+
+3. **If it's not working:**
+   - Check Railway dashboard for deployment status
+   - Check logs for errors
+   - Verify environment variables are set
+
+## Next Steps
+
+Once Railway is working:
+1. The app will automatically use the production API
+2. Test login/registration
+3. Verify all endpoints work
 
 ---
 
-## Alternative: Delete and Recreate Service
+**Note**: The app is now configured to use the production Railway API by default. If you want to use a local server for development, run:
 
-If the above doesn't work:
-
-1. **Delete the current service** (click the service → Settings → Delete)
-2. **Create a new service**:
-   - Click "New" → "GitHub Repo"
-   - Select your repository: `Zyfiury/appointment-booking-app`
-   - **IMPORTANT**: In the service settings, set **Root Directory** to `server`
-   - Railway will auto-detect Node.js and deploy
-
----
-
-## What I've Added to Your Code
-
-I've created these files to help Railway:
-- `railway.json` - Railway configuration (root level)
-- `server/nixpacks.toml` - Nixpacks build configuration
-- `server/railway.json` - Service-specific Railway config
-- Updated `server/package.json` - Added postinstall script
-
----
-
-## After Successful Deployment
-
-1. **Get your Railway URL** (e.g., `https://appointment-booking-app-production.up.railway.app`)
-2. **Update your Flutter app**:
-   - Open `lib/config/app_config.dart`
-   - Replace the placeholder URL with your Railway URL:
-     ```dart
-     return 'https://your-railway-url.railway.app/api';
-     ```
-
----
-
-## Still Having Issues?
-
-Check the **Build Logs** tab in Railway to see the exact error message. Common issues:
-- Missing environment variables
-- TypeScript compilation errors
-- Missing dependencies
-
-Let me know what error you see and I'll help fix it!
+```powershell
+flutter run --dart-define=API_URL=http://10.0.2.2:5000/api
+```
