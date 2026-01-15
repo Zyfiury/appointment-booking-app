@@ -10,9 +10,7 @@ class AppConfig {
   static const bool isProduction = bool.fromEnvironment('PRODUCTION', defaultValue: false);
   
   // API Configuration
-  // IMPORTANT: After deploying your backend, update this URL
-  // Example: 'https://bookly-api.railway.app/api'
-  // Example: 'https://bookly-api.render.com/api'
+  // Production URL: https://accurate-solace-app22.up.railway.app/api
   static String get apiBaseUrl {
     // Get from environment variable or use default
     // You can set this via: --dart-define=API_URL=https://your-api.com/api
@@ -21,12 +19,13 @@ class AppConfig {
       return apiUrl;
     }
     
-    // Default production URL (update this after deployment)
+    // Production URL - Railway deployment
     if (isProduction) {
-      return 'https://your-api-url.com/api'; // TODO: Replace with your production URL
+      return 'https://accurate-solace-app22.up.railway.app/api';
     }
     
     // Development - will use automatic detection in ApiService
+    // To test with production API in development, set: --dart-define=API_URL=https://accurate-solace-app22.up.railway.app/api
     return '';
   }
 

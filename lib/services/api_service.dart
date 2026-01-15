@@ -5,9 +5,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/app_config.dart';
 
 class ApiService {
-  // Production URL - Update this in lib/config/app_config.dart after deploying backend
+  // Production URL: https://accurate-solace-app22.up.railway.app/api
   // For development, uses localhost/emulator URLs automatically
+  // To use production API: flutter run --dart-define=API_URL=https://accurate-solace-app22.up.railway.app/api
   static String get baseUrl {
+    // Check if API URL is set via environment variable (highest priority)
+    const apiUrl = String.fromEnvironment('API_URL', defaultValue: '');
+    if (apiUrl.isNotEmpty) {
+      return apiUrl;
+    }
+    
     // Check if production mode is enabled
     if (AppConfig.isProduction && AppConfig.apiBaseUrl.isNotEmpty) {
       return AppConfig.apiBaseUrl;
