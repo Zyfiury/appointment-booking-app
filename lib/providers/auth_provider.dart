@@ -4,6 +4,7 @@ import 'dart:convert';
 import '../models/user.dart';
 import '../services/auth_service.dart';
 import '../services/api_service.dart';
+import '../services/google_auth_service.dart';
 
 class AuthProvider with ChangeNotifier {
   User? _user;
@@ -152,6 +153,78 @@ class AuthProvider with ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading user profile: $e');
+    }
+  }
+
+  Future<bool> updateProfile({
+    String? name,
+    String? email,
+    String? phone,
+    String? profilePicture,
+  }) async {
+    try {
+      _loading = true;
+      _lastError = null;
+      notifyListeners();
+
+      final updates = <String, dynamic>{};
+      if (name != null) updates['name'] = name;
+      if (email != null) updates['email'] = email;
+      if (phone != null) updates['phone'] = phone;
+      if (profilePicture != null) updates['profilePicture'] = profilePicture;
+
+      final response = await _apiService.patch('/users/profile', data: updates);
+      _user = User.fromJson(response.data);
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user', json.encode(response.data));
+
+      _loading = false;
+      _lastError = null;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _loading = false;
+      _lastError = 'Failed to update profile: $e';
+      debugPrint('Update profile error: $e');
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> signInWithGoogle() async {
+    try {
+      _loading = true;
+      _lastError = null;
+      notifyListeners();
+
+      final googleAuthService = GoogleAuthService();
+      final result = await googleAuthService.signIn();
+
+      if (result['success'] == true) {
+        _token = result['token'];
+        _user = User.fromJson(result['user']);
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('token', _token!);
+        await prefs.setString('user', json.encode(result['user']));
+
+        _loading = false;
+        _lastError = null;
+        notifyListeners();
+        return true;
+      } else {
+        _loading = false;
+        _lastError = result['error'] ?? 'Google sign in failed';
+        notifyListeners();
+        return false;
+      }
+    } catch (e) {
+      _loading = false;
+      _lastError = 'Google sign in error: $e';
+      debugPrint('Google sign in exception: $e');
+      notifyListeners();
+      return false;
     }
   }
 }

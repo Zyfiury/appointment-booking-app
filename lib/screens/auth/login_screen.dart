@@ -238,7 +238,24 @@ class _LoginScreenState extends State<LoginScreen>
                             },
                           ),
                         ),
-                        const SizedBox(height: 32),
+                        const SizedBox(height: 16),
+                        // Forgot Password Link
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: () {
+                              Navigator.pushNamed(context, '/forgot-password');
+                            },
+                            child: const Text(
+                              'Forgot Password?',
+                              style: TextStyle(
+                                color: AppTheme.primaryColor,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
                         // Login Button
                         SlideInWidget(
                           duration: const Duration(milliseconds: 900),
@@ -256,6 +273,47 @@ class _LoginScreenState extends State<LoginScreen>
                           ),
                         ),
                       ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Google Sign In Button
+                  FadeInWidget(
+                    duration: const Duration(milliseconds: 1000),
+                    child: Consumer<AuthProvider>(
+                      builder: (context, authProvider, _) {
+                        return OutlinedButton.icon(
+                          onPressed: authProvider.loading ? null : () async {
+                            final success = await authProvider.signInWithGoogle();
+                            if (!mounted) return;
+                            if (success) {
+                              final user = authProvider.user;
+                              if (user?.isProvider == true) {
+                                Navigator.pushReplacementNamed(context, '/provider/dashboard');
+                              } else {
+                                Navigator.pushReplacementNamed(context, '/dashboard');
+                              }
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    authProvider.lastError ?? 'Google sign in failed',
+                                  ),
+                                  backgroundColor: AppTheme.errorColor,
+                                ),
+                              );
+                            }
+                          },
+                          icon: const Icon(Icons.login, size: 24, color: AppTheme.textPrimary),
+                          label: const Text('Continue with Google'),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            side: BorderSide(color: AppTheme.borderColor),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                   const SizedBox(height: 24),

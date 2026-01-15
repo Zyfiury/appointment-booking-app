@@ -94,4 +94,36 @@ class AuthService {
       return null;
     }
   }
+
+  Future<Map<String, dynamic>> forgotPassword(String email) async {
+    try {
+      final response = await _api.post('/auth/forgot-password', data: {
+        'email': email,
+      });
+      return {
+        'success': true,
+        'token': response.data['token'], // Only in development
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'error': e.toString(),
+      };
+    }
+  }
+
+  Future<bool> resetPassword({
+    required String token,
+    required String newPassword,
+  }) async {
+    try {
+      await _api.post('/auth/reset-password', data: {
+        'token': token,
+        'newPassword': newPassword,
+      });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
 }

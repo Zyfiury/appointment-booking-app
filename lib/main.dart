@@ -17,6 +17,9 @@ import 'screens/customer/search_screen.dart';
 import 'screens/customer/map_screen.dart';
 import 'screens/customer/payment_screen.dart';
 import 'screens/customer/review_screen.dart';
+import 'screens/settings/edit_profile_screen.dart';
+import 'screens/auth/forgot_password_screen.dart';
+import 'screens/auth/reset_password_screen.dart';
 import 'widgets/app_logo.dart';
 
 void main() {
@@ -46,6 +49,8 @@ class MyApp extends StatelessWidget {
           '/provider/services': (context) => const ManageServicesScreen(),
           '/provider/location': (context) => const ProviderLocationScreen(),
           '/settings': (context) => const SettingsScreen(),
+          '/edit-profile': (context) => const EditProfileScreen(),
+          '/forgot-password': (context) => const ForgotPasswordScreen(),
           '/search': (context) => const SearchScreen(),
           '/map': (context) => const MapScreen(),
         },

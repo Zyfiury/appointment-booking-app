@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/layered_card.dart';
@@ -74,16 +75,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         gradient: AppTheme.primaryGradient,
                         shape: BoxShape.circle,
                       ),
-                      child: Center(
-                        child: Text(
-                          user?.name.substring(0, 1).toUpperCase() ?? 'U',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
+                      child: user?.profilePicture != null
+                          ? ClipOval(
+                              child: CachedNetworkImage(
+                                imageUrl: user!.profilePicture!,
+                                fit: BoxFit.cover,
+                                placeholder: (context, url) => Container(
+                                  color: AppTheme.primaryColor.withOpacity(0.3),
+                                  child: const Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                ),
+                                errorWidget: (context, url, error) => Center(
+                                  child: Text(
+                                    user.name.substring(0, 1).toUpperCase(),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            )
+                          : Center(
+                              child: Text(
+                                user?.name.substring(0, 1).toUpperCase() ?? 'U',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -202,13 +226,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       title: 'Edit Profile',
                       icon: Icons.person_outline,
                       onTap: () {
-                        // TODO: Navigate to edit profile
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Edit Profile - Coming Soon'),
-                            backgroundColor: AppTheme.primaryColor,
-                          ),
-                        );
+                        Navigator.pushNamed(context, '/edit-profile');
                       },
                     ),
                     const Divider(height: 32),
