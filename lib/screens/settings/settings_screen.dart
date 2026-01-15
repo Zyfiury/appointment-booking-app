@@ -234,13 +234,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       title: 'Help & Support',
                       icon: Icons.help_outline,
                       onTap: () {
-                        // TODO: Navigate to help
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Help & Support - Coming Soon'),
-                            backgroundColor: AppTheme.primaryColor,
-                          ),
-                        );
+                        Navigator.pushNamed(context, '/help-support');
                       },
                     ),
                     const Divider(height: 32),

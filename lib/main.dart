@@ -18,6 +18,7 @@ import 'screens/customer/map_screen.dart';
 import 'screens/customer/payment_screen.dart';
 import 'screens/customer/review_screen.dart';
 import 'screens/settings/edit_profile_screen.dart';
+import 'screens/settings/help_support_screen.dart';
 import 'screens/auth/forgot_password_screen.dart';
 import 'screens/auth/reset_password_screen.dart';
 import 'widgets/app_logo.dart';
@@ -53,6 +54,7 @@ class MyApp extends StatelessWidget {
           '/forgot-password': (context) => const ForgotPasswordScreen(),
           '/search': (context) => const SearchScreen(),
           '/map': (context) => const MapScreen(),
+          '/help-support': (context) => const HelpSupportScreen(),
         },
       ),
     );
