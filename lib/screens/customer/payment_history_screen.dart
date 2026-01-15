@@ -66,7 +66,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
       case 'failed':
         return Icons.error;
       case 'refunded':
-        return Icons.refund;
+        return Icons.undo;
       default:
         return Icons.payment;
     }
