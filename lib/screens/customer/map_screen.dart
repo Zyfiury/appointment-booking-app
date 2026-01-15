@@ -42,28 +42,49 @@ class _MapScreenState extends State<MapScreen> {
   Future<void> _initializeMap() async {
     try {
       // Get current location
-      final position = await _mapService.getCurrentLocation();
+      Position? position;
+      try {
+        position = await _mapService.getCurrentLocation();
+        debugPrint('📍 Current location: ${position?.latitude}, ${position?.longitude}');
+      } catch (e) {
+        debugPrint('⚠️ Location error: $e');
+        // Continue without location
+      }
       
       // Load providers with location-based search if available
-      List<Provider> providers;
-      if (position != null) {
-        // Use location-based search
-        final filters = SearchFilters(
-          latitude: position.latitude,
-          longitude: position.longitude,
-          radius: _searchRadius,
-          sortBy: 'distance',
-        );
-        providers = await _searchService.searchProviders(filters);
-      } else {
-        // Fallback to all providers
-        providers = await _serviceService.getProviders();
+      List<Provider> providers = [];
+      try {
+        if (position != null) {
+          // Use location-based search
+          final filters = SearchFilters(
+            latitude: position.latitude,
+            longitude: position.longitude,
+            radius: _searchRadius,
+            sortBy: 'distance',
+          );
+          providers = await _searchService.searchProviders(filters);
+          debugPrint('✅ Loaded ${providers.length} providers with location');
+        } else {
+          // Fallback to all providers
+          providers = await _serviceService.getProviders();
+          debugPrint('✅ Loaded ${providers.length} providers (no location)');
+        }
+      } catch (e) {
+        debugPrint('❌ Error loading providers: $e');
+        // Try to load without location
+        try {
+          providers = await _serviceService.getProviders();
+          debugPrint('✅ Loaded ${providers.length} providers (fallback)');
+        } catch (e2) {
+          debugPrint('❌ Failed to load providers: $e2');
+        }
       }
       
       // Use a default location if current location is not available
+      // Use London as default (where some test providers are)
       final defaultPosition = Position(
-        latitude: 37.7749, // San Francisco
-        longitude: -122.4194,
+        latitude: 51.5074, // London
+        longitude: -0.1278,
         timestamp: DateTime.now(),
         accuracy: 0,
         altitude: 0,
@@ -80,14 +101,20 @@ class _MapScreenState extends State<MapScreen> {
         _loading = false;
       });
 
+      debugPrint('🗺️ Map initialized at: ${_currentPosition?.latitude}, ${_currentPosition?.longitude}');
+      debugPrint('📍 Providers with location: ${providers.where((p) => p.latitude != null && p.longitude != null).length}');
+
       // Wait a bit for map to initialize, then update markers
-      await Future.delayed(const Duration(milliseconds: 500));
+      await Future.delayed(const Duration(milliseconds: 1000));
       _updateMarkers();
-    } catch (e) {
-      // If location fails, use default location
+    } catch (e, stackTrace) {
+      debugPrint('❌ Map initialization error: $e');
+      debugPrint('Stack trace: $stackTrace');
+      
+      // If location fails, use default location (London)
       final defaultPosition = Position(
-        latitude: 37.7749,
-        longitude: -122.4194,
+        latitude: 51.5074,
+        longitude: -0.1278,
         timestamp: DateTime.now(),
         accuracy: 0,
         altitude: 0,
@@ -109,11 +136,12 @@ class _MapScreenState extends State<MapScreen> {
         setState(() {
           _providers = providers;
         });
+        debugPrint('✅ Loaded ${providers.length} providers (error fallback)');
       } catch (e) {
-        // Ignore provider loading errors
+        debugPrint('❌ Failed to load providers: $e');
       }
       
-      await Future.delayed(const Duration(milliseconds: 500));
+      await Future.delayed(const Duration(milliseconds: 1000));
       _updateMarkers();
     }
   }
@@ -267,8 +295,10 @@ class _MapScreenState extends State<MapScreen> {
 
     // Move camera to show all markers
     if (_mapController != null) {
-      final targetLat = _currentPosition?.latitude ?? 37.7749;
-      final targetLng = _currentPosition?.longitude ?? -122.4194;
+      final targetLat = _currentPosition?.latitude ?? 51.5074; // London default
+      final targetLng = _currentPosition?.longitude ?? -0.1278;
+      
+      debugPrint('📷 Moving camera to: $targetLat, $targetLng with ${_markers.length} markers');
       
       _mapController!.animateCamera(
         CameraUpdate.newLatLngZoom(
@@ -276,6 +306,8 @@ class _MapScreenState extends State<MapScreen> {
           _currentPosition != null ? 14 : 12,
         ),
       );
+    } else {
+      debugPrint('⚠️ Map controller not ready yet');
     }
   }
 
@@ -361,11 +393,15 @@ class _MapScreenState extends State<MapScreen> {
               : GoogleMap(
                   initialCameraPosition: CameraPosition(
                     target: LatLng(
-                      _currentPosition?.latitude ?? 37.7749,
-                      _currentPosition?.longitude ?? -122.4194,
+                      _currentPosition?.latitude ?? 51.5074, // London default
+                      _currentPosition?.longitude ?? -0.1278,
                     ),
                     zoom: _currentPosition != null ? 14.0 : 12.0,
                   ),
+                  compassEnabled: true,
+                  mapToolbarEnabled: false,
+                  buildingsEnabled: true,
+                  trafficEnabled: false,
                   markers: _markers,
                   myLocationEnabled: true,
                   myLocationButtonEnabled: false,
@@ -373,9 +409,26 @@ class _MapScreenState extends State<MapScreen> {
                   zoomControlsEnabled: true,
                   onMapCreated: (controller) async {
                     _mapController = controller;
+                    debugPrint('🗺️ Map created successfully');
                     // Wait a moment for map to fully initialize
-                    await Future.delayed(const Duration(milliseconds: 500));
+                    await Future.delayed(const Duration(milliseconds: 1000));
                     _updateMarkers();
+                    
+                    // Ensure camera is positioned correctly
+                    if (_currentPosition != null) {
+                      controller.animateCamera(
+                        CameraUpdate.newLatLngZoom(
+                          LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+                          14,
+                        ),
+                      );
+                    }
+                  },
+                  onCameraMoveStarted: () {
+                    debugPrint('📷 Camera move started');
+                  },
+                  onCameraIdle: () {
+                    debugPrint('📷 Camera idle');
                   },
                   onTap: (LatLng position) {
                     // Clear selection when tapping map
