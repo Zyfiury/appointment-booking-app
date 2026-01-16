@@ -19,13 +19,13 @@ router.post('/register', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Invalid role' });
     }
 
-    const existingUser = db.getUserByEmail(email);
+    const existingUser = await db.getUserByEmail(email);
     if (existingUser) {
       return res.status(400).json({ error: 'User already exists' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = db.createUser({
+    const user = await db.createUser({
       email,
       password: hashedPassword,
       name,
@@ -62,7 +62,7 @@ router.post('/login', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Email and password required' });
     }
 
-    const user = db.getUserByEmail(email);
+    const user = await db.getUserByEmail(email);
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -93,8 +93,8 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 });
 
-router.get('/me', authenticate, (req: AuthRequest, res: Response) => {
-  const user = db.getUserById(req.userId!);
+router.get('/me', authenticate, async (req: AuthRequest, res: Response) => {
+  const user = await db.getUserById(req.userId!);
   if (!user) {
     return res.status(404).json({ error: 'User not found' });
   }
@@ -105,6 +105,7 @@ router.get('/me', authenticate, (req: AuthRequest, res: Response) => {
     name: user.name,
     role: user.role,
     phone: user.phone,
+    profilePicture: user.profilePicture,
   });
 });
 

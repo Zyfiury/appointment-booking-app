@@ -4,29 +4,29 @@ import { db } from '../data/database';
 
 const router = express.Router();
 
-router.get('/', authenticate, (req: AuthRequest, res: Response) => {
+router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const appointments = db.getAppointments(req.userId!, req.userRole!);
-    const appointmentsWithDetails = appointments.map(apt => {
-      const customer = db.getUserById(apt.customerId);
-      const provider = db.getUserById(apt.providerId);
-      const service = db.getServiceById(apt.serviceId);
+    const appointments = await db.getAppointments(req.userId!, req.userRole!);
+    const appointmentsWithDetails = await Promise.all(appointments.map(async (apt) => {
+      const customer = await db.getUserById(apt.customerId);
+      const provider = await db.getUserById(apt.providerId);
+      const service = await db.getServiceById(apt.serviceId);
       return {
         ...apt,
         customer: customer ? { id: customer.id, name: customer.name, email: customer.email } : null,
         provider: provider ? { id: provider.id, name: provider.name, email: provider.email } : null,
         service: service ? { id: service.id, name: service.name, duration: service.duration, price: service.price } : null,
       };
-    });
+    }));
     res.json(appointmentsWithDetails);
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-router.get('/:id', authenticate, (req: AuthRequest, res: Response) => {
+router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const appointment = db.getAppointmentById(req.params.id);
+    const appointment = await db.getAppointmentById(req.params.id);
     if (!appointment) {
       return res.status(404).json({ error: 'Appointment not found' });
     }
@@ -35,9 +35,9 @@ router.get('/:id', authenticate, (req: AuthRequest, res: Response) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    const customer = db.getUserById(appointment.customerId);
-    const provider = db.getUserById(appointment.providerId);
-    const service = db.getServiceById(appointment.serviceId);
+    const customer = await db.getUserById(appointment.customerId);
+    const provider = await db.getUserById(appointment.providerId);
+    const service = await db.getServiceById(appointment.serviceId);
 
     res.json({
       ...appointment,
@@ -50,7 +50,7 @@ router.get('/:id', authenticate, (req: AuthRequest, res: Response) => {
   }
 });
 
-router.post('/', authenticate, (req: AuthRequest, res: Response) => {
+router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const { providerId, serviceId, date, time, notes } = req.body;
 
@@ -62,7 +62,7 @@ router.post('/', authenticate, (req: AuthRequest, res: Response) => {
       return res.status(403).json({ error: 'Only customers can book appointments' });
     }
 
-    const service = db.getServiceById(serviceId);
+    const service = await db.getServiceById(serviceId);
     if (!service) {
       return res.status(404).json({ error: 'Service not found' });
     }
@@ -72,7 +72,7 @@ router.post('/', authenticate, (req: AuthRequest, res: Response) => {
     }
 
     // Check for conflicts
-    const existingAppointments = db.getAppointments(providerId, 'provider');
+    const existingAppointments = await db.getAppointments(providerId, 'provider');
     const appointmentDateTime = new Date(`${date}T${time}`);
     const conflict = existingAppointments.find(apt => {
       if (apt.status === 'cancelled') return false;
@@ -86,7 +86,7 @@ router.post('/', authenticate, (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'Time slot already booked' });
     }
 
-    const appointment = db.createAppointment({
+    const appointment = await db.createAppointment({
       customerId: req.userId!,
       providerId,
       serviceId,
@@ -96,8 +96,8 @@ router.post('/', authenticate, (req: AuthRequest, res: Response) => {
       notes,
     });
 
-    const customer = db.getUserById(appointment.customerId);
-    const provider = db.getUserById(appointment.providerId);
+    const customer = await db.getUserById(appointment.customerId);
+    const provider = await db.getUserById(appointment.providerId);
 
     res.status(201).json({
       ...appointment,
@@ -110,9 +110,9 @@ router.post('/', authenticate, (req: AuthRequest, res: Response) => {
   }
 });
 
-router.patch('/:id', authenticate, (req: AuthRequest, res: Response) => {
+router.patch('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const appointment = db.getAppointmentById(req.params.id);
+    const appointment = await db.getAppointmentById(req.params.id);
     if (!appointment) {
       return res.status(404).json({ error: 'Appointment not found' });
     }
@@ -131,14 +131,14 @@ router.patch('/:id', authenticate, (req: AuthRequest, res: Response) => {
       updates.notes = notes;
     }
 
-    const updated = db.updateAppointment(req.params.id, updates);
+    const updated = await db.updateAppointment(req.params.id, updates);
     if (!updated) {
       return res.status(404).json({ error: 'Appointment not found' });
     }
 
-    const customer = db.getUserById(updated.customerId);
-    const provider = db.getUserById(updated.providerId);
-    const service = db.getServiceById(updated.serviceId);
+    const customer = await db.getUserById(updated.customerId);
+    const provider = await db.getUserById(updated.providerId);
+    const service = await db.getServiceById(updated.serviceId);
 
     res.json({
       ...updated,
@@ -151,9 +151,9 @@ router.patch('/:id', authenticate, (req: AuthRequest, res: Response) => {
   }
 });
 
-router.delete('/:id', authenticate, (req: AuthRequest, res: Response) => {
+router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const appointment = db.getAppointmentById(req.params.id);
+    const appointment = await db.getAppointmentById(req.params.id);
     if (!appointment) {
       return res.status(404).json({ error: 'Appointment not found' });
     }
@@ -162,7 +162,7 @@ router.delete('/:id', authenticate, (req: AuthRequest, res: Response) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    db.deleteAppointment(req.params.id);
+    await db.deleteAppointment(req.params.id);
     res.json({ message: 'Appointment deleted' });
   } catch (error) {
     res.status(500).json({ error: 'Server error' });

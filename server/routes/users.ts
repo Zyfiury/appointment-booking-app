@@ -17,10 +17,11 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c; // Distance in kilometers
 }
 
-router.get('/providers', (req, res: Response) => {
+router.get('/providers', async (req, res: Response) => {
   try {
-    const providers = db.getUsers().filter(u => u.role === 'provider');
-    const reviews = db.getReviews();
+    const allUsers = await db.getUsers();
+    const providers = allUsers.filter(u => u.role === 'provider');
+    const reviews = await db.getReviews();
     
     res.json(providers.map(p => {
       const providerReviews = reviews.filter(r => r.providerId === p.id);
@@ -45,10 +46,11 @@ router.get('/providers', (req, res: Response) => {
   }
 });
 
-router.get('/providers/search', (req, res: Response) => {
+router.get('/providers/search', async (req, res: Response) => {
   try {
-    let providers = db.getUsers().filter(u => u.role === 'provider');
-    const reviews = db.getReviews();
+    const allUsers = await db.getUsers();
+    let providers = allUsers.filter(u => u.role === 'provider');
+    const reviews = await db.getReviews();
     const { q, category, minPrice, maxPrice, minRating, latitude, longitude, radius, sortBy } = req.query;
 
     // Apply filters
@@ -127,13 +129,13 @@ router.get('/providers/search', (req, res: Response) => {
   }
 });
 
-router.get('/providers/:id', (req, res: Response) => {
+router.get('/providers/:id', async (req, res: Response) => {
   try {
-    const provider = db.getUserById(req.params.id);
+    const provider = await db.getUserById(req.params.id);
     if (!provider || provider.role !== 'provider') {
       return res.status(404).json({ error: 'Provider not found' });
     }
-    const reviews = db.getReviews();
+    const reviews = await db.getReviews();
     const providerReviews = reviews.filter(r => r.providerId === provider.id);
     const rating = providerReviews.length > 0
       ? providerReviews.reduce((sum, r) => sum + r.rating, 0) / providerReviews.length
@@ -155,9 +157,9 @@ router.get('/providers/:id', (req, res: Response) => {
   }
 });
 
-router.get('/profile', authenticate, (req: AuthRequest, res: Response) => {
+router.get('/profile', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const user = db.getUserById(req.userId!);
+    const user = await db.getUserById(req.userId!);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -176,17 +178,18 @@ router.get('/profile', authenticate, (req: AuthRequest, res: Response) => {
   }
 });
 
-router.patch('/profile', authenticate, (req: AuthRequest, res: Response) => {
+router.patch('/profile', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { name, phone, latitude, longitude, address } = req.body;
+    const { name, phone, latitude, longitude, address, profilePicture } = req.body;
     const updates: any = {};
     if (name) updates.name = name;
     if (phone !== undefined) updates.phone = phone;
     if (latitude !== undefined) updates.latitude = latitude;
     if (longitude !== undefined) updates.longitude = longitude;
     if (address !== undefined) updates.address = address;
+    if (profilePicture !== undefined) updates.profilePicture = profilePicture;
 
-    const updated = db.updateUser(req.userId!, updates);
+    const updated = await db.updateUser(req.userId!, updates);
     if (!updated) {
       return res.status(404).json({ error: 'User not found' });
     }

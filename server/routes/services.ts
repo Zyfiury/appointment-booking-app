@@ -4,19 +4,19 @@ import { db } from '../data/database';
 
 const router = express.Router();
 
-router.get('/', (req, res: Response) => {
+router.get('/', async (req, res: Response) => {
   try {
     const providerId = req.query.providerId as string | undefined;
-    const services = db.getServices(providerId);
+    const services = await db.getServices(providerId);
     res.json(services);
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-router.get('/categories', (req, res: Response) => {
+router.get('/categories', async (req, res: Response) => {
   try {
-    const services = db.getServices();
+    const services = await db.getServices();
     const categories = [...new Set(services.map(s => s.category))].filter(Boolean);
     res.json(categories);
   } catch (error) {
@@ -24,9 +24,9 @@ router.get('/categories', (req, res: Response) => {
   }
 });
 
-router.get('/search', (req, res: Response) => {
+router.get('/search', async (req, res: Response) => {
   try {
-    let services = db.getServices();
+    let services = await db.getServices();
     const { q, category, minPrice, maxPrice, providerId } = req.query;
 
     if (q) {
@@ -59,9 +59,9 @@ router.get('/search', (req, res: Response) => {
   }
 });
 
-router.get('/:id', (req, res: Response) => {
+router.get('/:id', async (req, res: Response) => {
   try {
-    const service = db.getServiceById(req.params.id);
+    const service = await db.getServiceById(req.params.id);
     if (!service) {
       return res.status(404).json({ error: 'Service not found' });
     }
@@ -71,7 +71,7 @@ router.get('/:id', (req, res: Response) => {
   }
 });
 
-router.post('/', authenticate, (req: AuthRequest, res: Response) => {
+router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     if (req.userRole !== 'provider') {
       return res.status(403).json({ error: 'Only providers can create services' });
@@ -83,7 +83,7 @@ router.post('/', authenticate, (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const service = db.createService({
+    const service = await db.createService({
       providerId: req.userId!,
       name,
       description,
@@ -98,9 +98,9 @@ router.post('/', authenticate, (req: AuthRequest, res: Response) => {
   }
 });
 
-router.patch('/:id', authenticate, (req: AuthRequest, res: Response) => {
+router.patch('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const service = db.getServiceById(req.params.id);
+    const service = await db.getServiceById(req.params.id);
     if (!service) {
       return res.status(404).json({ error: 'Service not found' });
     }
@@ -117,7 +117,7 @@ router.patch('/:id', authenticate, (req: AuthRequest, res: Response) => {
     if (price !== undefined) updates.price = parseFloat(price);
     if (category) updates.category = category;
 
-    const updated = db.updateService(req.params.id, updates);
+    const updated = await db.updateService(req.params.id, updates);
     if (!updated) {
       return res.status(404).json({ error: 'Service not found' });
     }
@@ -128,9 +128,9 @@ router.patch('/:id', authenticate, (req: AuthRequest, res: Response) => {
   }
 });
 
-router.delete('/:id', authenticate, (req: AuthRequest, res: Response) => {
+router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const service = db.getServiceById(req.params.id);
+    const service = await db.getServiceById(req.params.id);
     if (!service) {
       return res.status(404).json({ error: 'Service not found' });
     }
@@ -139,7 +139,7 @@ router.delete('/:id', authenticate, (req: AuthRequest, res: Response) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    db.deleteService(req.params.id);
+    await db.deleteService(req.params.id);
     res.json({ message: 'Service deleted' });
   } catch (error) {
     res.status(500).json({ error: 'Server error' });

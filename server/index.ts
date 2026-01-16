@@ -6,6 +6,8 @@ import userRoutes from './routes/users';
 import serviceRoutes from './routes/services';
 import paymentRoutes from './routes/payments';
 import reviewRoutes from './routes/reviews';
+// Import database to trigger initialization
+import './data/database';
 
 const app = express();
 const PORT = process.env.PORT || 5000;

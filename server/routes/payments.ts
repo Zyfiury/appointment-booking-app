@@ -14,7 +14,7 @@ router.post('/create-intent', authenticate, async (req: AuthRequest, res: Respon
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const appointment = db.getAppointmentById(appointmentId);
+    const appointment = await db.getAppointmentById(appointmentId);
     if (!appointment) {
       return res.status(404).json({ error: 'Appointment not found' });
     }
@@ -29,7 +29,7 @@ router.post('/create-intent', authenticate, async (req: AuthRequest, res: Respon
     };
 
     // Create payment record
-    const payment = db.createPayment({
+    const payment = await db.createPayment({
       appointmentId,
       amount,
       currency,
@@ -57,11 +57,11 @@ router.post('/confirm', authenticate, async (req: AuthRequest, res: Response) =>
 
     // In production, confirm with Stripe API
     // For now, update payment status
-    const payments = db.getPayments();
+    const payments = await db.getPayments();
     const payment = payments.find(p => p.transactionId === paymentIntentId);
     
     if (payment) {
-      db.updatePayment(payment.id, { status: 'completed' });
+      await db.updatePayment(payment.id, { status: 'completed' });
       res.json({ success: true, payment });
     } else {
       res.status(404).json({ error: 'Payment not found' });
@@ -72,30 +72,36 @@ router.post('/confirm', authenticate, async (req: AuthRequest, res: Response) =>
 });
 
 // Get user payments
-router.get('/', authenticate, (req: AuthRequest, res: Response) => {
+router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const payments = db.getPayments().filter(p => {
-      const appointment = db.getAppointmentById(p.appointmentId);
-      return appointment && (
+    const allPayments = await db.getPayments();
+    const payments = await Promise.all(
+      allPayments.map(async (p) => {
+        const appointment = await db.getAppointmentById(p.appointmentId);
+        return { payment: p, appointment };
+      })
+    );
+    const filteredPayments = payments
+      .filter(({ appointment }) => appointment && (
         appointment.customerId === req.userId ||
         appointment.providerId === req.userId
-      );
-    });
-    res.json(payments);
+      ))
+      .map(({ payment }) => payment);
+    res.json(filteredPayments);
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 // Get payment by ID
-router.get('/:id', authenticate, (req: AuthRequest, res: Response) => {
+router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const payment = db.getPaymentById(req.params.id);
+    const payment = await db.getPaymentById(req.params.id);
     if (!payment) {
       return res.status(404).json({ error: 'Payment not found' });
     }
 
-    const appointment = db.getAppointmentById(payment.appointmentId);
+    const appointment = await db.getAppointmentById(payment.appointmentId);
     if (!appointment || 
         (appointment.customerId !== req.userId && 
          appointment.providerId !== req.userId)) {
@@ -109,9 +115,9 @@ router.get('/:id', authenticate, (req: AuthRequest, res: Response) => {
 });
 
 // Refund payment
-router.post('/:id/refund', authenticate, (req: AuthRequest, res: Response) => {
+router.post('/:id/refund', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const payment = db.getPaymentById(req.params.id);
+    const payment = await db.getPaymentById(req.params.id);
     if (!payment) {
       return res.status(404).json({ error: 'Payment not found' });
     }
@@ -120,8 +126,9 @@ router.post('/:id/refund', authenticate, (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'Payment cannot be refunded' });
     }
 
-    db.updatePayment(payment.id, { status: 'refunded' });
-    res.json({ success: true, payment: db.getPaymentById(payment.id) });
+    await db.updatePayment(payment.id, { status: 'refunded' });
+    const updatedPayment = await db.getPaymentById(payment.id);
+    res.json({ success: true, payment: updatedPayment });
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
   }

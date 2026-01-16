@@ -6,18 +6,18 @@ import { v4 as uuidv4 } from 'uuid';
 const router = express.Router();
 
 // Get reviews
-router.get('/', (req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
     const { providerId } = req.query;
-    let reviews = db.getReviews();
+    let reviews = await db.getReviews();
 
     if (providerId) {
       reviews = reviews.filter(r => r.providerId === providerId);
     }
 
     // Add customer names
-    const reviewsWithDetails = reviews.map(review => {
-      const customer = db.getUserById(review.customerId);
+    const reviewsWithDetails = await Promise.all(reviews.map(async (review) => {
+      const customer = await db.getUserById(review.customerId);
       return {
         ...review,
         customerName: customer?.name || 'Anonymous',
@@ -26,7 +26,7 @@ router.get('/', (req: Request, res: Response) => {
           name: customer.name,
         } : null,
       };
-    });
+    }));
 
     res.json(reviewsWithDetails);
   } catch (error) {
@@ -35,7 +35,7 @@ router.get('/', (req: Request, res: Response) => {
 });
 
 // Create review
-router.post('/', authenticate, (req: AuthRequest, res: Response) => {
+router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const { appointmentId, providerId, rating, comment, photos } = req.body;
 
@@ -47,7 +47,7 @@ router.post('/', authenticate, (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'Rating must be between 1 and 5' });
     }
 
-    const appointment = db.getAppointmentById(appointmentId);
+    const appointment = await db.getAppointmentById(appointmentId);
     if (!appointment) {
       return res.status(404).json({ error: 'Appointment not found' });
     }
@@ -57,14 +57,15 @@ router.post('/', authenticate, (req: AuthRequest, res: Response) => {
     }
 
     // Check if review already exists
-    const existingReview = db.getReviews().find(
+    const allReviews = await db.getReviews();
+    const existingReview = allReviews.find(
       r => r.appointmentId === appointmentId
     );
     if (existingReview) {
       return res.status(400).json({ error: 'Review already exists for this appointment' });
     }
 
-    const review = db.createReview({
+    const review = await db.createReview({
       appointmentId,
       providerId,
       customerId: req.userId!,
@@ -74,9 +75,9 @@ router.post('/', authenticate, (req: AuthRequest, res: Response) => {
     });
 
     // Update provider rating
-    db.updateProviderRating(providerId);
+    await db.updateProviderRating(providerId);
 
-    const customer = db.getUserById(req.userId!);
+    const customer = await db.getUserById(req.userId!);
     res.status(201).json({
       ...review,
       customerName: customer?.name || 'Anonymous',
@@ -87,9 +88,9 @@ router.post('/', authenticate, (req: AuthRequest, res: Response) => {
 });
 
 // Update review
-router.patch('/:id', authenticate, (req: AuthRequest, res: Response) => {
+router.patch('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const review = db.getReviewById(req.params.id);
+    const review = await db.getReviewById(req.params.id);
     if (!review) {
       return res.status(404).json({ error: 'Review not found' });
     }
@@ -99,16 +100,16 @@ router.patch('/:id', authenticate, (req: AuthRequest, res: Response) => {
     }
 
     const { rating, comment, photos } = req.body;
-    const updated = db.updateReview(req.params.id, {
+    const updated = await db.updateReview(req.params.id, {
       rating,
       comment,
       photos,
     });
 
     // Update provider rating
-    db.updateProviderRating(review.providerId);
+    await db.updateProviderRating(review.providerId);
 
-    const customer = db.getUserById(req.userId!);
+    const customer = await db.getUserById(req.userId!);
     res.json({
       ...updated,
       customerName: customer?.name || 'Anonymous',
@@ -119,9 +120,9 @@ router.patch('/:id', authenticate, (req: AuthRequest, res: Response) => {
 });
 
 // Delete review
-router.delete('/:id', authenticate, (req: AuthRequest, res: Response) => {
+router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const review = db.getReviewById(req.params.id);
+    const review = await db.getReviewById(req.params.id);
     if (!review) {
       return res.status(404).json({ error: 'Review not found' });
     }
@@ -130,8 +131,8 @@ router.delete('/:id', authenticate, (req: AuthRequest, res: Response) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    db.deleteReview(req.params.id);
-    db.updateProviderRating(review.providerId);
+    await db.deleteReview(req.params.id);
+    await db.updateProviderRating(review.providerId);
 
     res.json({ success: true });
   } catch (error) {
@@ -140,9 +141,10 @@ router.delete('/:id', authenticate, (req: AuthRequest, res: Response) => {
 });
 
 // Get provider stats
-router.get('/stats/:providerId', (req: Request, res: Response) => {
+router.get('/stats/:providerId', async (req: Request, res: Response) => {
   try {
-    const reviews = db.getReviews().filter(
+    const allReviews = await db.getReviews();
+    const reviews = allReviews.filter(
       r => r.providerId === req.params.providerId
     );
 

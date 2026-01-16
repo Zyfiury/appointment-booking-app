@@ -1,6 +1,7 @@
-import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
-import { join } from 'path';
+import { Pool, QueryResult } from 'pg';
+import { initializeDatabase } from './migrations';
 
+// Database interfaces
 export interface User {
   id: string;
   email: string;
@@ -11,6 +12,7 @@ export interface User {
   latitude?: number;
   longitude?: number;
   address?: string;
+  profilePicture?: string;
   createdAt: string;
 }
 
@@ -58,213 +60,578 @@ export interface Review {
   createdAt: string;
 }
 
-interface Database {
-  users: User[];
-  services: Service[];
-  appointments: Appointment[];
-  payments: Payment[];
-  reviews: Review[];
-}
+// Initialize PostgreSQL connection pool
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
+});
 
-// Ensure the data directory exists
-const DATA_DIR = join(__dirname);
-const DB_PATH = join(DATA_DIR, 'db.json');
-
-// Create data directory if it doesn't exist
-if (!existsSync(DATA_DIR)) {
-  mkdirSync(DATA_DIR, { recursive: true });
-}
-
-function loadDatabase(): Database {
-  if (existsSync(DB_PATH)) {
-    const data = readFileSync(DB_PATH, 'utf-8');
-    const parsed = JSON.parse(data);
-    // Ensure all arrays exist
-    return {
-      users: parsed.users || [],
-      services: parsed.services || [],
-      appointments: parsed.appointments || [],
-      payments: parsed.payments || [],
-      reviews: parsed.reviews || [],
-    };
+// Initialize database on first import
+let dbInitialized = false;
+const initPromise = initializeDatabase(pool).then(() => {
+  dbInitialized = true;
+}).catch((error) => {
+  console.error('Failed to initialize database:', error);
+  // In development, if DATABASE_URL is not set, we'll use JSON fallback
+  if (!process.env.DATABASE_URL) {
+    console.warn('⚠️  DATABASE_URL not set. Database operations will fail. Set DATABASE_URL to use PostgreSQL.');
   }
-  return { users: [], services: [], appointments: [], payments: [], reviews: [] };
+});
+
+// Helper function to ensure DB is initialized
+async function ensureInitialized(): Promise<void> {
+  if (!dbInitialized) {
+    await initPromise;
+  }
 }
 
-function saveDatabase(db: Database): void {
-  writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
+// Helper function to map database rows to User objects
+function mapUser(row: any): User {
+  return {
+    id: row.id,
+    email: row.email,
+    password: row.password,
+    name: row.name,
+    role: row.role,
+    phone: row.phone || undefined,
+    latitude: row.latitude ? parseFloat(row.latitude) : undefined,
+    longitude: row.longitude ? parseFloat(row.longitude) : undefined,
+    address: row.address || undefined,
+    profilePicture: row.profile_picture || undefined,
+    createdAt: row.created_at.toISOString(),
+  };
+}
+
+// Helper function to map database rows to Service objects
+function mapService(row: any): Service {
+  return {
+    id: row.id,
+    providerId: row.provider_id,
+    name: row.name,
+    description: row.description,
+    duration: parseInt(row.duration),
+    price: parseFloat(row.price),
+    category: row.category,
+  };
+}
+
+// Helper function to map database rows to Appointment objects
+function mapAppointment(row: any): Appointment {
+  return {
+    id: row.id,
+    customerId: row.customer_id,
+    providerId: row.provider_id,
+    serviceId: row.service_id,
+    date: row.date,
+    time: row.time,
+    status: row.status,
+    notes: row.notes || undefined,
+    createdAt: row.created_at.toISOString(),
+  };
+}
+
+// Helper function to map database rows to Payment objects
+function mapPayment(row: any): Payment {
+  return {
+    id: row.id,
+    appointmentId: row.appointment_id,
+    amount: parseFloat(row.amount),
+    currency: row.currency,
+    status: row.status,
+    paymentMethod: row.payment_method,
+    transactionId: row.transaction_id || undefined,
+    createdAt: row.created_at.toISOString(),
+  };
+}
+
+// Helper function to map database rows to Review objects
+function mapReview(row: any): Review {
+  return {
+    id: row.id,
+    appointmentId: row.appointment_id,
+    providerId: row.provider_id,
+    customerId: row.customer_id,
+    rating: parseInt(row.rating),
+    comment: row.comment,
+    photos: row.photos || undefined,
+    createdAt: row.created_at.toISOString(),
+  };
 }
 
 export const db = {
-  getUsers: (): User[] => loadDatabase().users,
-  getUserById: (id: string): User | undefined => {
-    return loadDatabase().users.find(u => u.id === id);
+  // User methods
+  getUsers: async (): Promise<User[]> => {
+    await ensureInitialized();
+    const result = await pool.query('SELECT * FROM users ORDER BY created_at DESC');
+    return result.rows.map(mapUser);
   },
-  getUserByEmail: (email: string): User | undefined => {
-    return loadDatabase().users.find(u => u.email === email);
+
+  getUserById: async (id: string): Promise<User | undefined> => {
+    await ensureInitialized();
+    const result = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+    return result.rows.length > 0 ? mapUser(result.rows[0]) : undefined;
   },
-  createUser: (user: Omit<User, 'id' | 'createdAt'>): User => {
-    const db = loadDatabase();
-    const newUser: User = {
-      ...user,
-      id: Date.now().toString(),
-      createdAt: new Date().toISOString(),
-    };
-    db.users.push(newUser);
-    saveDatabase(db);
-    return newUser;
+
+  getUserByEmail: async (email: string): Promise<User | undefined> => {
+    await ensureInitialized();
+    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    return result.rows.length > 0 ? mapUser(result.rows[0]) : undefined;
   },
-  updateUser: (id: string, updates: Partial<User>): User | null => {
-    const db = loadDatabase();
-    const index = db.users.findIndex(u => u.id === id);
-    if (index === -1) return null;
-    db.users[index] = { ...db.users[index], ...updates };
-    saveDatabase(db);
-    return db.users[index];
+
+  createUser: async (user: Omit<User, 'id' | 'createdAt'>): Promise<User> => {
+    await ensureInitialized();
+    const id = Date.now().toString();
+    const result = await pool.query(
+      `INSERT INTO users (id, email, password, name, role, phone, latitude, longitude, address, profile_picture)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING *`,
+      [
+        id,
+        user.email,
+        user.password,
+        user.name,
+        user.role,
+        user.phone || null,
+        user.latitude || null,
+        user.longitude || null,
+        user.address || null,
+        user.profilePicture || null,
+      ]
+    );
+    return mapUser(result.rows[0]);
   },
-  getServices: (providerId?: string): Service[] => {
-    const db = loadDatabase();
-    if (providerId) {
-      return db.services.filter(s => s.providerId === providerId);
+
+  updateUser: async (id: string, updates: Partial<User>): Promise<User | null> => {
+    await ensureInitialized();
+    const fields: string[] = [];
+    const values: any[] = [];
+    let paramCount = 1;
+
+    if (updates.email !== undefined) {
+      fields.push(`email = $${paramCount++}`);
+      values.push(updates.email);
     }
-    return db.services;
+    if (updates.password !== undefined) {
+      fields.push(`password = $${paramCount++}`);
+      values.push(updates.password);
+    }
+    if (updates.name !== undefined) {
+      fields.push(`name = $${paramCount++}`);
+      values.push(updates.name);
+    }
+    if (updates.role !== undefined) {
+      fields.push(`role = $${paramCount++}`);
+      values.push(updates.role);
+    }
+    if (updates.phone !== undefined) {
+      fields.push(`phone = $${paramCount++}`);
+      values.push(updates.phone || null);
+    }
+    if (updates.latitude !== undefined) {
+      fields.push(`latitude = $${paramCount++}`);
+      values.push(updates.latitude || null);
+    }
+    if (updates.longitude !== undefined) {
+      fields.push(`longitude = $${paramCount++}`);
+      values.push(updates.longitude || null);
+    }
+    if (updates.address !== undefined) {
+      fields.push(`address = $${paramCount++}`);
+      values.push(updates.address || null);
+    }
+    if (updates.profilePicture !== undefined) {
+      fields.push(`profile_picture = $${paramCount++}`);
+      values.push(updates.profilePicture || null);
+    }
+
+    if (fields.length === 0) {
+      return await db.getUserById(id) || null;
+    }
+
+    values.push(id);
+    const result = await pool.query(
+      `UPDATE users SET ${fields.join(', ')} WHERE id = $${paramCount} RETURNING *`,
+      values
+    );
+    return result.rows.length > 0 ? mapUser(result.rows[0]) : null;
   },
-  getServiceById: (id: string): Service | undefined => {
-    return loadDatabase().services.find(s => s.id === id);
+
+  // Service methods
+  getServices: async (providerId?: string): Promise<Service[]> => {
+    await ensureInitialized();
+    if (providerId) {
+      const result = await pool.query('SELECT * FROM services WHERE provider_id = $1 ORDER BY name', [providerId]);
+      return result.rows.map(mapService);
+    }
+    const result = await pool.query('SELECT * FROM services ORDER BY name');
+    return result.rows.map(mapService);
   },
-  createService: (service: Omit<Service, 'id'>): Service => {
-    const db = loadDatabase();
-    const newService: Service = {
-      ...service,
-      id: Date.now().toString(),
-    };
-    db.services.push(newService);
-    saveDatabase(db);
-    return newService;
+
+  getServiceById: async (id: string): Promise<Service | undefined> => {
+    await ensureInitialized();
+    const result = await pool.query('SELECT * FROM services WHERE id = $1', [id]);
+    return result.rows.length > 0 ? mapService(result.rows[0]) : undefined;
   },
-  updateService: (id: string, updates: Partial<Service>): Service | null => {
-    const db = loadDatabase();
-    const index = db.services.findIndex(s => s.id === id);
-    if (index === -1) return null;
-    db.services[index] = { ...db.services[index], ...updates };
-    saveDatabase(db);
-    return db.services[index];
+
+  createService: async (service: Omit<Service, 'id'>): Promise<Service> => {
+    await ensureInitialized();
+    const id = Date.now().toString();
+    const result = await pool.query(
+      `INSERT INTO services (id, provider_id, name, description, duration, price, category)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [id, service.providerId, service.name, service.description, service.duration, service.price, service.category]
+    );
+    return mapService(result.rows[0]);
   },
-  deleteService: (id: string): boolean => {
-    const db = loadDatabase();
-    const index = db.services.findIndex(s => s.id === id);
-    if (index === -1) return false;
-    db.services.splice(index, 1);
-    saveDatabase(db);
-    return true;
+
+  updateService: async (id: string, updates: Partial<Service>): Promise<Service | null> => {
+    await ensureInitialized();
+    const fields: string[] = [];
+    const values: any[] = [];
+    let paramCount = 1;
+
+    if (updates.providerId !== undefined) {
+      fields.push(`provider_id = $${paramCount++}`);
+      values.push(updates.providerId);
+    }
+    if (updates.name !== undefined) {
+      fields.push(`name = $${paramCount++}`);
+      values.push(updates.name);
+    }
+    if (updates.description !== undefined) {
+      fields.push(`description = $${paramCount++}`);
+      values.push(updates.description);
+    }
+    if (updates.duration !== undefined) {
+      fields.push(`duration = $${paramCount++}`);
+      values.push(updates.duration);
+    }
+    if (updates.price !== undefined) {
+      fields.push(`price = $${paramCount++}`);
+      values.push(updates.price);
+    }
+    if (updates.category !== undefined) {
+      fields.push(`category = $${paramCount++}`);
+      values.push(updates.category);
+    }
+
+    if (fields.length === 0) {
+      return await db.getServiceById(id) || null;
+    }
+
+    values.push(id);
+    const result = await pool.query(
+      `UPDATE services SET ${fields.join(', ')} WHERE id = $${paramCount} RETURNING *`,
+      values
+    );
+    return result.rows.length > 0 ? mapService(result.rows[0]) : null;
   },
-  getAppointments: (userId?: string, role?: 'customer' | 'provider'): Appointment[] => {
-    const db = loadDatabase();
+
+  deleteService: async (id: string): Promise<boolean> => {
+    await ensureInitialized();
+    const result = await pool.query('DELETE FROM services WHERE id = $1', [id]);
+    return result.rowCount !== null && result.rowCount > 0;
+  },
+
+  // Appointment methods
+  getAppointments: async (userId?: string, role?: 'customer' | 'provider'): Promise<Appointment[]> => {
+    await ensureInitialized();
     if (userId && role === 'customer') {
-      return db.appointments.filter(a => a.customerId === userId);
+      const result = await pool.query(
+        'SELECT * FROM appointments WHERE customer_id = $1 ORDER BY date DESC, time DESC',
+        [userId]
+      );
+      return result.rows.map(mapAppointment);
     }
     if (userId && role === 'provider') {
-      return db.appointments.filter(a => a.providerId === userId);
+      const result = await pool.query(
+        'SELECT * FROM appointments WHERE provider_id = $1 ORDER BY date DESC, time DESC',
+        [userId]
+      );
+      return result.rows.map(mapAppointment);
     }
-    return db.appointments;
+    const result = await pool.query('SELECT * FROM appointments ORDER BY date DESC, time DESC');
+    return result.rows.map(mapAppointment);
   },
-  getAppointmentById: (id: string): Appointment | undefined => {
-    return loadDatabase().appointments.find(a => a.id === id);
+
+  getAppointmentById: async (id: string): Promise<Appointment | undefined> => {
+    await ensureInitialized();
+    const result = await pool.query('SELECT * FROM appointments WHERE id = $1', [id]);
+    return result.rows.length > 0 ? mapAppointment(result.rows[0]) : undefined;
   },
-  createAppointment: (appointment: Omit<Appointment, 'id' | 'createdAt'>): Appointment => {
-    const db = loadDatabase();
-    const newAppointment: Appointment = {
-      ...appointment,
-      id: Date.now().toString(),
-      createdAt: new Date().toISOString(),
-    };
-    db.appointments.push(newAppointment);
-    saveDatabase(db);
-    return newAppointment;
+
+  createAppointment: async (appointment: Omit<Appointment, 'id' | 'createdAt'>): Promise<Appointment> => {
+    await ensureInitialized();
+    const id = Date.now().toString();
+    const result = await pool.query(
+      `INSERT INTO appointments (id, customer_id, provider_id, service_id, date, time, status, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [
+        id,
+        appointment.customerId,
+        appointment.providerId,
+        appointment.serviceId,
+        appointment.date,
+        appointment.time,
+        appointment.status,
+        appointment.notes || null,
+      ]
+    );
+    return mapAppointment(result.rows[0]);
   },
-  updateAppointment: (id: string, updates: Partial<Appointment>): Appointment | null => {
-    const db = loadDatabase();
-    const index = db.appointments.findIndex(a => a.id === id);
-    if (index === -1) return null;
-    db.appointments[index] = { ...db.appointments[index], ...updates };
-    saveDatabase(db);
-    return db.appointments[index];
+
+  updateAppointment: async (id: string, updates: Partial<Appointment>): Promise<Appointment | null> => {
+    await ensureInitialized();
+    const fields: string[] = [];
+    const values: any[] = [];
+    let paramCount = 1;
+
+    if (updates.customerId !== undefined) {
+      fields.push(`customer_id = $${paramCount++}`);
+      values.push(updates.customerId);
+    }
+    if (updates.providerId !== undefined) {
+      fields.push(`provider_id = $${paramCount++}`);
+      values.push(updates.providerId);
+    }
+    if (updates.serviceId !== undefined) {
+      fields.push(`service_id = $${paramCount++}`);
+      values.push(updates.serviceId);
+    }
+    if (updates.date !== undefined) {
+      fields.push(`date = $${paramCount++}`);
+      values.push(updates.date);
+    }
+    if (updates.time !== undefined) {
+      fields.push(`time = $${paramCount++}`);
+      values.push(updates.time);
+    }
+    if (updates.status !== undefined) {
+      fields.push(`status = $${paramCount++}`);
+      values.push(updates.status);
+    }
+    if (updates.notes !== undefined) {
+      fields.push(`notes = $${paramCount++}`);
+      values.push(updates.notes || null);
+    }
+
+    if (fields.length === 0) {
+      return await db.getAppointmentById(id) || null;
+    }
+
+    values.push(id);
+    const result = await pool.query(
+      `UPDATE appointments SET ${fields.join(', ')} WHERE id = $${paramCount} RETURNING *`,
+      values
+    );
+    return result.rows.length > 0 ? mapAppointment(result.rows[0]) : null;
   },
-  deleteAppointment: (id: string): boolean => {
-    const db = loadDatabase();
-    const index = db.appointments.findIndex(a => a.id === id);
-    if (index === -1) return false;
-    db.appointments.splice(index, 1);
-    saveDatabase(db);
-    return true;
+
+  deleteAppointment: async (id: string): Promise<boolean> => {
+    await ensureInitialized();
+    const result = await pool.query('DELETE FROM appointments WHERE id = $1', [id]);
+    return result.rowCount !== null && result.rowCount > 0;
   },
+
   // Payment methods
-  getPayments: (): Payment[] => loadDatabase().payments,
-  getPaymentById: (id: string): Payment | undefined => {
-    return loadDatabase().payments.find(p => p.id === id);
+  getPayments: async (): Promise<Payment[]> => {
+    await ensureInitialized();
+    const result = await pool.query('SELECT * FROM payments ORDER BY created_at DESC');
+    return result.rows.map(mapPayment);
   },
-  createPayment: (payment: Omit<Payment, 'id' | 'createdAt'>): Payment => {
-    const db = loadDatabase();
-    const newPayment: Payment = {
-      ...payment,
-      id: Date.now().toString(),
-      createdAt: new Date().toISOString(),
-    };
-    db.payments.push(newPayment);
-    saveDatabase(db);
-    return newPayment;
+
+  getPaymentById: async (id: string): Promise<Payment | undefined> => {
+    await ensureInitialized();
+    const result = await pool.query('SELECT * FROM payments WHERE id = $1', [id]);
+    return result.rows.length > 0 ? mapPayment(result.rows[0]) : undefined;
   },
-  updatePayment: (id: string, updates: Partial<Payment>): Payment | null => {
-    const db = loadDatabase();
-    const index = db.payments.findIndex(p => p.id === id);
-    if (index === -1) return null;
-    db.payments[index] = { ...db.payments[index], ...updates };
-    saveDatabase(db);
-    return db.payments[index];
+
+  getPaymentsByUserId: async (userId: string): Promise<Payment[]> => {
+    await ensureInitialized();
+    const result = await pool.query(
+      `SELECT p.* FROM payments p
+       INNER JOIN appointments a ON p.appointment_id = a.id
+       WHERE a.customer_id = $1
+       ORDER BY p.created_at DESC`,
+      [userId]
+    );
+    return result.rows.map(mapPayment);
   },
+
+  createPayment: async (payment: Omit<Payment, 'id' | 'createdAt'>): Promise<Payment> => {
+    await ensureInitialized();
+    const id = Date.now().toString();
+    const result = await pool.query(
+      `INSERT INTO payments (id, appointment_id, amount, currency, status, payment_method, transaction_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [
+        id,
+        payment.appointmentId,
+        payment.amount,
+        payment.currency,
+        payment.status,
+        payment.paymentMethod,
+        payment.transactionId || null,
+      ]
+    );
+    return mapPayment(result.rows[0]);
+  },
+
+  updatePayment: async (id: string, updates: Partial<Payment>): Promise<Payment | null> => {
+    await ensureInitialized();
+    const fields: string[] = [];
+    const values: any[] = [];
+    let paramCount = 1;
+
+    if (updates.appointmentId !== undefined) {
+      fields.push(`appointment_id = $${paramCount++}`);
+      values.push(updates.appointmentId);
+    }
+    if (updates.amount !== undefined) {
+      fields.push(`amount = $${paramCount++}`);
+      values.push(updates.amount);
+    }
+    if (updates.currency !== undefined) {
+      fields.push(`currency = $${paramCount++}`);
+      values.push(updates.currency);
+    }
+    if (updates.status !== undefined) {
+      fields.push(`status = $${paramCount++}`);
+      values.push(updates.status);
+    }
+    if (updates.paymentMethod !== undefined) {
+      fields.push(`payment_method = $${paramCount++}`);
+      values.push(updates.paymentMethod);
+    }
+    if (updates.transactionId !== undefined) {
+      fields.push(`transaction_id = $${paramCount++}`);
+      values.push(updates.transactionId || null);
+    }
+
+    if (fields.length === 0) {
+      return await db.getPaymentById(id) || null;
+    }
+
+    values.push(id);
+    const result = await pool.query(
+      `UPDATE payments SET ${fields.join(', ')} WHERE id = $${paramCount} RETURNING *`,
+      values
+    );
+    return result.rows.length > 0 ? mapPayment(result.rows[0]) : null;
+  },
+
   // Review methods
-  getReviews: (): Review[] => loadDatabase().reviews,
-  getReviewById: (id: string): Review | undefined => {
-    return loadDatabase().reviews.find(r => r.id === id);
+  getReviews: async (): Promise<Review[]> => {
+    await ensureInitialized();
+    const result = await pool.query('SELECT * FROM reviews ORDER BY created_at DESC');
+    return result.rows.map(mapReview);
   },
-  createReview: (review: Omit<Review, 'id' | 'createdAt'>): Review => {
-    const db = loadDatabase();
-    const newReview: Review = {
-      ...review,
-      id: Date.now().toString(),
-      createdAt: new Date().toISOString(),
-    };
-    db.reviews.push(newReview);
-    saveDatabase(db);
-    return newReview;
+
+  getReviewById: async (id: string): Promise<Review | undefined> => {
+    await ensureInitialized();
+    const result = await pool.query('SELECT * FROM reviews WHERE id = $1', [id]);
+    return result.rows.length > 0 ? mapReview(result.rows[0]) : undefined;
   },
-  updateReview: (id: string, updates: Partial<Review>): Review | null => {
-    const db = loadDatabase();
-    const index = db.reviews.findIndex(r => r.id === id);
-    if (index === -1) return null;
-    db.reviews[index] = { ...db.reviews[index], ...updates };
-    saveDatabase(db);
-    return db.reviews[index];
+
+  getReviewsByProviderId: async (providerId: string): Promise<Review[]> => {
+    await ensureInitialized();
+    const result = await pool.query(
+      'SELECT * FROM reviews WHERE provider_id = $1 ORDER BY created_at DESC',
+      [providerId]
+    );
+    return result.rows.map(mapReview);
   },
-  deleteReview: (id: string): boolean => {
-    const db = loadDatabase();
-    const index = db.reviews.findIndex(r => r.id === id);
-    if (index === -1) return false;
-    db.reviews.splice(index, 1);
-    saveDatabase(db);
-    return true;
+
+  createReview: async (review: Omit<Review, 'id' | 'createdAt'>): Promise<Review> => {
+    await ensureInitialized();
+    const id = Date.now().toString();
+    const result = await pool.query(
+      `INSERT INTO reviews (id, appointment_id, provider_id, customer_id, rating, comment, photos)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [
+        id,
+        review.appointmentId,
+        review.providerId,
+        review.customerId,
+        review.rating,
+        review.comment,
+        review.photos || null,
+      ]
+    );
+    return mapReview(result.rows[0]);
   },
+
+  updateReview: async (id: string, updates: Partial<Review>): Promise<Review | null> => {
+    await ensureInitialized();
+    const fields: string[] = [];
+    const values: any[] = [];
+    let paramCount = 1;
+
+    if (updates.appointmentId !== undefined) {
+      fields.push(`appointment_id = $${paramCount++}`);
+      values.push(updates.appointmentId);
+    }
+    if (updates.providerId !== undefined) {
+      fields.push(`provider_id = $${paramCount++}`);
+      values.push(updates.providerId);
+    }
+    if (updates.customerId !== undefined) {
+      fields.push(`customer_id = $${paramCount++}`);
+      values.push(updates.customerId);
+    }
+    if (updates.rating !== undefined) {
+      fields.push(`rating = $${paramCount++}`);
+      values.push(updates.rating);
+    }
+    if (updates.comment !== undefined) {
+      fields.push(`comment = $${paramCount++}`);
+      values.push(updates.comment);
+    }
+    if (updates.photos !== undefined) {
+      fields.push(`photos = $${paramCount++}`);
+      values.push(updates.photos || null);
+    }
+
+    if (fields.length === 0) {
+      return await db.getReviewById(id) || null;
+    }
+
+    values.push(id);
+    const result = await pool.query(
+      `UPDATE reviews SET ${fields.join(', ')} WHERE id = $${paramCount} RETURNING *`,
+      values
+    );
+    return result.rows.length > 0 ? mapReview(result.rows[0]) : null;
+  },
+
+  deleteReview: async (id: string): Promise<boolean> => {
+    await ensureInitialized();
+    const result = await pool.query('DELETE FROM reviews WHERE id = $1', [id]);
+    return result.rowCount !== null && result.rowCount > 0;
+  },
+
   // Provider rating methods
-  updateProviderRating: (providerId: string): void => {
-    const db = loadDatabase();
-    const reviews = db.reviews.filter(r => r.providerId === providerId);
-    if (reviews.length === 0) return;
-
-    const totalRating = reviews.reduce((sum, r) => sum + r.rating, 0);
-    const averageRating = totalRating / reviews.length;
-    const reviewCount = reviews.length;
-
-    // Update user with rating (we'll store it in a metadata field)
-    // For now, we'll calculate it on the fly in the API
+  updateProviderRating: async (providerId: string): Promise<void> => {
+    // This is now calculated on the fly in the API, so we don't need to store it
+    // But we keep this method for compatibility
+    await ensureInitialized();
   },
 };
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  await pool.end();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  await pool.end();
+  process.exit(0);
+});
