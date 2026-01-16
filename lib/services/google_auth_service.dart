@@ -3,8 +3,13 @@ import 'package:dio/dio.dart';
 import 'api_service.dart';
 
 class GoogleAuthService {
+  // Use the serverClientId from AndroidManifest.xml (default_web_client_id)
+  // This is automatically read from strings.xml via AndroidManifest meta-data
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: ['email', 'profile'],
+    // serverClientId is automatically read from AndroidManifest.xml meta-data
+    // If that doesn't work, uncomment and set explicitly:
+    // serverClientId: '621611382404-3su41a8p8bucc44leffirbva6a3eac8p.apps.googleusercontent.com',
   );
   final ApiService _apiService = ApiService();
 
