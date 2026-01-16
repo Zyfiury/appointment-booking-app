@@ -73,27 +73,27 @@ export async function createPaymentIntentWithSplit(
   applicationFeeAmount: number
 ) {
   try {
-    // Create payment intent on the provider's connected account
-    const paymentIntent = await stripe.paymentIntents.create(
-      {
-        amount: Math.round(amount * 100), // Convert to cents
-        currency: currency.toLowerCase(),
-        application_fee_amount: Math.round(applicationFeeAmount * 100), // Platform commission in cents
-        on_behalf_of: providerStripeAccountId,
-        transfer_data: {
-          destination: providerStripeAccountId,
-        },
+    // Create payment on platform account with application fee and transfer
+    // This is the recommended approach for marketplaces
+    const totalAmount = Math.round(amount * 100); // Total in cents
+    const feeAmount = Math.round(applicationFeeAmount * 100); // Platform commission in cents
+
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: totalAmount,
+      currency: currency.toLowerCase(),
+      application_fee_amount: feeAmount, // Platform keeps this (15%)
+      transfer_data: {
+        destination: providerStripeAccountId, // Provider receives the rest (85%)
       },
-      {
-        stripeAccount: providerStripeAccountId,
-      }
-    );
+      automatic_payment_methods: {
+        enabled: true,
+      },
+    });
 
     return paymentIntent;
   } catch (error: any) {
     console.error('Error creating payment intent with split:', error);
-    // Fallback: Create payment intent on platform account, then transfer
-    return await createPaymentIntentWithTransfer(amount, currency, providerStripeAccountId, applicationFeeAmount);
+    throw error;
   }
 }
 
