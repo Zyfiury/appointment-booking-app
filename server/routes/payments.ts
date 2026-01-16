@@ -28,13 +28,21 @@ router.post('/create-intent', authenticate, async (req: AuthRequest, res: Respon
       currency: currency.toLowerCase(),
     };
 
-    // Create payment record
+    // Calculate commission (15% platform fee)
+    const COMMISSION_RATE = 15.00; // 15% commission
+    const platformCommission = (amount * COMMISSION_RATE) / 100;
+    const providerAmount = amount - platformCommission;
+
+    // Create payment record with commission
     const payment = await db.createPayment({
       appointmentId,
       amount,
       currency,
       status: 'pending',
       paymentMethod: 'card',
+      platformCommission,
+      providerAmount,
+      commissionRate: COMMISSION_RATE,
     });
 
     res.json({

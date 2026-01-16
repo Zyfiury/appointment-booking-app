@@ -46,6 +46,9 @@ export interface Payment {
   status: 'pending' | 'completed' | 'failed' | 'refunded';
   paymentMethod: string;
   transactionId?: string;
+  platformCommission: number;
+  providerAmount: number;
+  commissionRate: number;
   createdAt: string;
 }
 
@@ -143,6 +146,9 @@ function mapPayment(row: any): Payment {
     status: row.status,
     paymentMethod: row.payment_method,
     transactionId: row.transaction_id || undefined,
+    platformCommission: parseFloat(row.platform_commission || 0),
+    providerAmount: parseFloat(row.provider_amount || 0),
+    commissionRate: parseFloat(row.commission_rate || 15.00),
     createdAt: row.created_at.toISOString(),
   };
 }
@@ -466,9 +472,13 @@ export const db = {
   createPayment: async (payment: Omit<Payment, 'id' | 'createdAt'>): Promise<Payment> => {
     await ensureInitialized();
     const id = Date.now().toString();
+    const commissionRate = payment.commissionRate || 15.00;
+    const platformCommission = (payment.amount * commissionRate) / 100;
+    const providerAmount = payment.amount - platformCommission;
+    
     const result = await pool.query(
-      `INSERT INTO payments (id, appointment_id, amount, currency, status, payment_method, transaction_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO payments (id, appointment_id, amount, currency, status, payment_method, transaction_id, platform_commission, provider_amount, commission_rate)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
       [
         id,
@@ -478,6 +488,9 @@ export const db = {
         payment.status,
         payment.paymentMethod,
         payment.transactionId || null,
+        platformCommission,
+        providerAmount,
+        commissionRate,
       ]
     );
     return mapPayment(result.rows[0]);
@@ -512,6 +525,31 @@ export const db = {
     if (updates.transactionId !== undefined) {
       fields.push(`transaction_id = $${paramCount++}`);
       values.push(updates.transactionId || null);
+    }
+    if (updates.platformCommission !== undefined) {
+      fields.push(`platform_commission = $${paramCount++}`);
+      values.push(updates.platformCommission);
+    }
+    if (updates.providerAmount !== undefined) {
+      fields.push(`provider_amount = $${paramCount++}`);
+      values.push(updates.providerAmount);
+    }
+    if (updates.commissionRate !== undefined) {
+      fields.push(`commission_rate = $${paramCount++}`);
+      values.push(updates.commissionRate);
+    }
+    // If amount changes, recalculate commission
+    if (updates.amount !== undefined) {
+      const currentPayment = await db.getPaymentById(id);
+      if (currentPayment) {
+        const commissionRate = currentPayment.commissionRate || 15.00;
+        const platformCommission = (updates.amount * commissionRate) / 100;
+        const providerAmount = updates.amount - platformCommission;
+        fields.push(`platform_commission = $${paramCount++}`);
+        values.push(platformCommission);
+        fields.push(`provider_amount = $${paramCount++}`);
+        values.push(providerAmount);
+      }
     }
 
     if (fields.length === 0) {

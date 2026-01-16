@@ -263,6 +263,49 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           fontSize: 14,
                         ),
                       ),
+                      const SizedBox(height: 16),
+                      const Divider(color: AppTheme.textSecondary),
+                      const SizedBox(height: 12),
+                      // Commission breakdown (optional - can be hidden for customers)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Service Fee (15%)',
+                            style: TextStyle(
+                              color: AppTheme.textSecondary,
+                              fontSize: 12,
+                            ),
+                          ),
+                          Text(
+                            '\$${(widget.appointment.service.price * 0.15).toStringAsFixed(2)}',
+                            style: TextStyle(
+                              color: AppTheme.textSecondary,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Provider Receives',
+                            style: TextStyle(
+                              color: AppTheme.textSecondary,
+                              fontSize: 12,
+                            ),
+                          ),
+                          Text(
+                            '\$${(widget.appointment.service.price * 0.85).toStringAsFixed(2)}',
+                            style: TextStyle(
+                              color: AppTheme.textSecondary,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
