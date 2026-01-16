@@ -111,6 +111,23 @@ After deployment:
 
 ---
 
+## 📚 Detailed PostgreSQL Setup
+
+For detailed step-by-step instructions on setting up PostgreSQL (local, Railway, Render), see:
+
+**👉 [POSTGRESQL_SETUP_GUIDE.md](./POSTGRESQL_SETUP_GUIDE.md)**
+
+This guide includes:
+- Local PostgreSQL installation (Windows, macOS, Linux)
+- Docker setup (easiest local option)
+- Railway PostgreSQL setup (step-by-step)
+- Render PostgreSQL setup (step-by-step)
+- Environment variable configuration
+- Connection testing
+- Troubleshooting common issues
+
+---
+
 ## SSL/HTTPS
 
 Most hosting platforms (Railway, Render, Heroku) provide HTTPS automatically. No additional setup needed!
