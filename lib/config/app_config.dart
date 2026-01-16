@@ -32,9 +32,10 @@ class AppConfig {
   // Stripe Configuration
   static String get stripePublishableKey {
     if (isProduction) {
-      return 'pk_live_YOUR_PRODUCTION_KEY'; // TODO: Replace with production key
+      return 'pk_live_YOUR_PRODUCTION_KEY'; // TODO: Replace with production key when ready
     }
-    return 'pk_test_YOUR_TEST_KEY'; // TODO: Replace with test key
+    // Test key - safe to include in code (publishable keys are meant to be public)
+    return 'pk_test_51SqAuM6iKaCjKdK7YUop4uN3MgIMBVmoGG5rgDxs8339SBKFkrQDjyX8yNUaRRu0C2dmNOhp3jpL9UxA8tCjFruU00pGh45zqQ';
   }
 
   // Google Maps
