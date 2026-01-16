@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Google Sign-In OAuth Client ID -->
-    <!-- Replace with your OAuth Client ID from Google Cloud Console -->
-    <!-- Get it from: https://console.cloud.google.com/apis/credentials -->
-    <string name="default_web_client_id">YOUR_GOOGLE_OAUTH_CLIENT_ID_HERE</string>
+    <string name="default_web_client_id">621611382404-3su41a8p8bucc44leffirbva6a3eac8p.apps.googleusercontent.com</string>
 </resources>
