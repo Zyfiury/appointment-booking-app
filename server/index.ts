@@ -6,6 +6,7 @@ import userRoutes from './routes/users';
 import serviceRoutes from './routes/services';
 import paymentRoutes from './routes/payments';
 import reviewRoutes from './routes/reviews';
+import stripeRoutes from './routes/stripe';
 // Import database to trigger initialization
 import './data/database';
 
@@ -22,6 +23,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/reviews', reviewRoutes);
+app.use('/api/stripe', stripeRoutes);
 
 app.get('/api/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', message: 'Server is running' });

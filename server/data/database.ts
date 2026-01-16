@@ -13,6 +13,7 @@ export interface User {
   longitude?: number;
   address?: string;
   profilePicture?: string;
+  stripeAccountId?: string; // Stripe Connect account ID for providers
   createdAt: string;
 }
 
@@ -104,6 +105,7 @@ function mapUser(row: any): User {
     longitude: row.longitude ? parseFloat(row.longitude) : undefined,
     address: row.address || undefined,
     profilePicture: row.profile_picture || undefined,
+    stripeAccountId: row.stripe_account_id || undefined,
     createdAt: row.created_at.toISOString(),
   };
 }
@@ -191,8 +193,8 @@ export const db = {
     await ensureInitialized();
     const id = Date.now().toString();
     const result = await pool.query(
-      `INSERT INTO users (id, email, password, name, role, phone, latitude, longitude, address, profile_picture)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `INSERT INTO users (id, email, password, name, role, phone, latitude, longitude, address, profile_picture, stripe_account_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
       [
         id,
@@ -205,6 +207,7 @@ export const db = {
         user.longitude || null,
         user.address || null,
         user.profilePicture || null,
+        user.stripeAccountId || null,
       ]
     );
     return mapUser(result.rows[0]);

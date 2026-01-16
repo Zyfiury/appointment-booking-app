@@ -16,8 +16,20 @@ export async function initializeDatabase(pool: Pool): Promise<void> {
         longitude DECIMAL(11, 8),
         address TEXT,
         profile_picture TEXT,
+        stripe_account_id VARCHAR(255),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
+    `);
+    
+    // Add stripe_account_id column if it doesn't exist (for existing databases)
+    await client.query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                      WHERE table_name='users' AND column_name='stripe_account_id') THEN
+          ALTER TABLE users ADD COLUMN stripe_account_id VARCHAR(255);
+        END IF;
+      END $$;
     `);
 
     // Create services table

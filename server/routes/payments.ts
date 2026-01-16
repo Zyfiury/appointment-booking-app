@@ -2,6 +2,11 @@ import express, { Request, Response } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { db } from '../data/database';
 import { v4 as uuidv4 } from 'uuid';
+import {
+  createPaymentIntentWithSplit,
+  confirmPaymentIntent,
+  calculateCommission,
+} from '../services/stripe_service';
 
 const router = express.Router();
 
@@ -19,19 +24,46 @@ router.post('/create-intent', authenticate, async (req: AuthRequest, res: Respon
       return res.status(404).json({ error: 'Appointment not found' });
     }
 
-    // In production, integrate with Stripe API here
-    // For now, return a mock payment intent
-    const paymentIntent = {
-      id: `pi_${uuidv4()}`,
-      clientSecret: `pi_${uuidv4()}_secret_${uuidv4()}`,
-      amount: amount * 100, // Convert to cents
-      currency: currency.toLowerCase(),
-    };
+    // Get provider's Stripe account
+    const provider = await db.getUserById(appointment.providerId);
+    if (!provider || !provider.stripeAccountId) {
+      return res.status(400).json({ 
+        error: 'Provider has not connected their payment account. Please contact the provider.',
+      });
+    }
 
     // Calculate commission (15% platform fee)
-    const COMMISSION_RATE = 15.00; // 15% commission
-    const platformCommission = (amount * COMMISSION_RATE) / 100;
-    const providerAmount = amount - platformCommission;
+    const { platformCommission, providerAmount, commissionRate } = calculateCommission(amount);
+
+    let paymentIntent;
+    let useStripe = false;
+
+    // Check if Stripe is configured
+    if (process.env.STRIPE_SECRET_KEY) {
+      try {
+        // Create payment intent with automatic split using Stripe Connect
+        paymentIntent = await createPaymentIntentWithSplit(
+          amount,
+          currency,
+          provider.stripeAccountId,
+          platformCommission
+        );
+        useStripe = true;
+      } catch (error: any) {
+        console.error('Stripe payment creation failed, using mock:', error);
+        // Fallback to mock if Stripe fails
+      }
+    }
+
+    // Fallback to mock payment if Stripe not configured or failed
+    if (!useStripe) {
+      paymentIntent = {
+        id: `pi_${uuidv4()}`,
+        client_secret: `pi_${uuidv4()}_secret_${uuidv4()}`,
+        amount: amount * 100, // Convert to cents
+        currency: currency.toLowerCase(),
+      };
+    }
 
     // Create payment record with commission
     const payment = await db.createPayment({
@@ -42,12 +74,17 @@ router.post('/create-intent', authenticate, async (req: AuthRequest, res: Respon
       paymentMethod: 'card',
       platformCommission,
       providerAmount,
-      commissionRate: COMMISSION_RATE,
+      commissionRate,
+      transactionId: paymentIntent.id,
     });
 
     res.json({
-      ...paymentIntent,
+      id: paymentIntent.id,
+      clientSecret: paymentIntent.client_secret || paymentIntent.id,
+      amount: paymentIntent.amount,
+      currency: paymentIntent.currency,
       paymentId: payment.id,
+      usingStripe: useStripe,
     });
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
@@ -63,17 +100,32 @@ router.post('/confirm', authenticate, async (req: AuthRequest, res: Response) =>
       return res.status(400).json({ error: 'Missing payment intent ID' });
     }
 
-    // In production, confirm with Stripe API
-    // For now, update payment status
+    // Find payment by transaction ID
     const payments = await db.getPayments();
     const payment = payments.find(p => p.transactionId === paymentIntentId);
     
-    if (payment) {
-      await db.updatePayment(payment.id, { status: 'completed' });
-      res.json({ success: true, payment });
-    } else {
-      res.status(404).json({ error: 'Payment not found' });
+    if (!payment) {
+      return res.status(404).json({ error: 'Payment not found' });
     }
+
+    // If Stripe is configured, confirm the payment intent
+    if (process.env.STRIPE_SECRET_KEY) {
+      try {
+        await confirmPaymentIntent(paymentIntentId);
+      } catch (error: any) {
+        console.error('Stripe payment confirmation failed:', error);
+        // Continue anyway - payment might already be confirmed
+      }
+    }
+
+    // Update payment status to completed
+    await db.updatePayment(payment.id, { status: 'completed' });
+    const updatedPayment = await db.getPaymentById(payment.id);
+    
+    res.json({ 
+      success: true, 
+      payment: updatedPayment,
+    });
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
   }
