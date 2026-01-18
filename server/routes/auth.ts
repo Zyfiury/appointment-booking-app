@@ -112,8 +112,8 @@ router.post('/google', async (req: Request, res: Response) => {
         password: '', // Google users don't have a password
         name: name || 'Google User',
         role: 'customer', // Default role
-        phone: null,
-        profilePicture: photoUrl || null,
+        phone: undefined,
+        profilePicture: photoUrl || undefined,
       });
     } else {
       // Update profile picture if provided and different

@@ -65,6 +65,11 @@ router.post('/create-intent', authenticate, async (req: AuthRequest, res: Respon
       };
     }
 
+    // Ensure paymentIntent is defined
+    if (!paymentIntent) {
+      return res.status(500).json({ error: 'Failed to create payment intent' });
+    }
+
     // Create payment record with commission
     const payment = await db.createPayment({
       appointmentId,
