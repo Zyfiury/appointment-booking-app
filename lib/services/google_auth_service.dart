@@ -3,11 +3,13 @@ import 'package:dio/dio.dart';
 import 'api_service.dart';
 
 class GoogleAuthService {
-  // Explicitly set serverClientId to ensure it's used
-  // This is the OAuth client ID from Google Cloud Console
+  // For Android, we use the client ID from AndroidManifest (strings.xml)
+  // For server-side verification, we'll use serverClientId
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: ['email', 'profile'],
-    serverClientId: '621611382404-3su41a8p8bucc44leffirbva6a3eac8p.apps.googleusercontent.com',
+    // serverClientId is optional on Android - it will use the one from AndroidManifest
+    // But we set it explicitly for backend token verification
+    serverClientId: '621611382404-4icdg8qfel11ls8vt33jgdgqfc65o0lm.apps.googleusercontent.com',
   );
   final ApiService _apiService = ApiService();
 
