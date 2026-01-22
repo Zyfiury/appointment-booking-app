@@ -6,7 +6,7 @@ param(
 )
 
 $ErrorActionPreference = "Continue"
-$testResults = @()
+$script:testResults = @()
 
 function Test-Endpoint {
     param(
@@ -38,14 +38,20 @@ function Test-Endpoint {
         $statusCode = 200
         
         Write-Host "   [PASS] SUCCESS" -ForegroundColor Green
-        $testResults += @{ Name = $Name; Status = "PASS"; Details = "Status: $statusCode" }
+        $script:testResults += @{ Name = $Name; Status = "PASS"; Details = "Status: $statusCode" }
         return $response
     }
     catch {
-        $statusCode = $_.Exception.Response.StatusCode.value__
+        $statusCode = $null
+        if ($_.Exception.Response) {
+            $statusCode = $_.Exception.Response.StatusCode.value__
+        }
+        if ($null -eq $statusCode) {
+            $statusCode = "Unknown"
+        }
         Write-Host "   [FAIL] FAILED: $statusCode" -ForegroundColor Red
         Write-Host "   Error: $($_.Exception.Message)" -ForegroundColor Yellow
-        $testResults += @{ Name = $Name; Status = "FAIL"; Details = "Status: $statusCode - $($_.Exception.Message)" }
+        $script:testResults += @{ Name = $Name; Status = "FAIL"; Details = "Status: $statusCode - $($_.Exception.Message)" }
         return $null
     }
 }
@@ -95,19 +101,47 @@ if ($registerResponse) {
         Test-Endpoint -Name "Get Services (Authenticated)" -Endpoint "/services" -Headers $authHeaders
         
         # Test 6: Get User Profile
-        Test-Endpoint -Name "Get User Profile" -Endpoint "/users/me" -Headers $authHeaders
+        Test-Endpoint -Name "Get User Profile" -Endpoint "/users/profile" -Headers $authHeaders
         
         # Test 7: Get Appointments
         Test-Endpoint -Name "Get Appointments" -Endpoint "/appointments" -Headers $authHeaders
     }
 }
 
-# Test 8: Invalid Login (Should Fail)
+# Test 8: Invalid Login (Should Fail - Expected 401)
 $invalidLogin = @{
     email = "invalid@test.com"
     password = "wrongpassword"
 }
-Test-Endpoint -Name "Invalid Login (Should Fail)" -Method "POST" -Endpoint "/auth/login" -Body $invalidLogin -ExpectedStatus "401"
+# This test expects a 401, so we'll handle it specially
+try {
+    $params = @{
+        Uri = "$BaseUrl/auth/login"
+        Method = "POST"
+        ContentType = "application/json"
+        Body = ($invalidLogin | ConvertTo-Json)
+        ErrorAction = "Stop"
+    }
+    $response = Invoke-RestMethod @params
+    Write-Host "`n[TEST] Testing: Invalid Login (Should Fail)" -ForegroundColor Cyan
+    Write-Host "   POST /auth/login" -ForegroundColor Gray
+        Write-Host "   [FAIL] Should have returned 401" -ForegroundColor Red
+        $script:testResults += @{ Name = "Invalid Login (Should Fail)"; Status = "FAIL"; Details = "Expected 401 but got 200" }
+} catch {
+    $statusCode = $null
+    if ($_.Exception.Response) {
+        $statusCode = $_.Exception.Response.StatusCode.value__
+    }
+    Write-Host "`n[TEST] Testing: Invalid Login (Should Fail)" -ForegroundColor Cyan
+    Write-Host "   POST /auth/login" -ForegroundColor Gray
+    if ($statusCode -eq 401) {
+        Write-Host "   [PASS] Correctly returned 401" -ForegroundColor Green
+        $script:testResults += @{ Name = "Invalid Login (Should Fail)"; Status = "PASS"; Details = "Status: $statusCode (Expected)" }
+    } else {
+        Write-Host "   [FAIL] Expected 401 but got $statusCode" -ForegroundColor Red
+        $script:testResults += @{ Name = "Invalid Login (Should Fail)"; Status = "FAIL"; Details = "Status: $statusCode (Expected 401)" }
+    }
+}
 
 # Test 9: Search Services
 Test-Endpoint -Name "Search Services" -Endpoint "/services/search?q=test"
@@ -117,16 +151,16 @@ Write-Host "`n========================================" -ForegroundColor Blue
 Write-Host "   TEST SUMMARY" -ForegroundColor Blue
 Write-Host "========================================`n" -ForegroundColor Blue
 
-$passed = ($testResults | Where-Object { $_.Status -eq "PASS" }).Count
-$failed = ($testResults | Where-Object { $_.Status -eq "FAIL" }).Count
-$total = $testResults.Count
+$passed = ($script:testResults | Where-Object { $_.Status -eq "PASS" }).Count
+$failed = ($script:testResults | Where-Object { $_.Status -eq "FAIL" }).Count
+$total = $script:testResults.Count
 
 Write-Host "Total Tests: $total" -ForegroundColor White
 Write-Host "Passed: $passed" -ForegroundColor Green
 Write-Host "Failed: $failed" -ForegroundColor $(if ($failed -gt 0) { "Red" } else { "Green" })
 
 Write-Host "`nDetailed Results:" -ForegroundColor Cyan
-foreach ($result in $testResults) {
+foreach ($result in $script:testResults) {
     $color = if ($result.Status -eq "PASS") { "Green" } else { "Red" }
     $icon = if ($result.Status -eq "PASS") { "[PASS]" } else { "[FAIL]" }
     Write-Host "  $icon $($result.Name): $($result.Status)" -ForegroundColor $color
