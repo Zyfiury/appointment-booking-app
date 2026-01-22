@@ -18,7 +18,7 @@ function Test-Endpoint {
         [string]$ExpectedStatus = "200"
     )
     
-    Write-Host "`n🧪 Testing: $Name" -ForegroundColor Cyan
+    Write-Host "`n[TEST] Testing: $Name" -ForegroundColor Cyan
     Write-Host "   $Method $Endpoint" -ForegroundColor Gray
     
     try {
@@ -37,13 +37,13 @@ function Test-Endpoint {
         $response = Invoke-RestMethod @params
         $statusCode = 200
         
-        Write-Host "   ✅ SUCCESS" -ForegroundColor Green
+        Write-Host "   [PASS] SUCCESS" -ForegroundColor Green
         $testResults += @{ Name = $Name; Status = "PASS"; Details = "Status: $statusCode" }
         return $response
     }
     catch {
         $statusCode = $_.Exception.Response.StatusCode.value__
-        Write-Host "   ❌ FAILED: $statusCode" -ForegroundColor Red
+        Write-Host "   [FAIL] FAILED: $statusCode" -ForegroundColor Red
         Write-Host "   Error: $($_.Exception.Message)" -ForegroundColor Yellow
         $testResults += @{ Name = $Name; Status = "FAIL"; Details = "Status: $statusCode - $($_.Exception.Message)" }
         return $null
@@ -85,7 +85,7 @@ if ($registerResponse) {
     
     if ($loginResponse -and $loginResponse.token) {
         $token = $loginResponse.token
-        Write-Host "`n   🔑 Token received: $($token.Substring(0, 20))..." -ForegroundColor Green
+        Write-Host "`n   [TOKEN] Token received: $($token.Substring(0, 20))..." -ForegroundColor Green
         
         # Test 5: Get Services (Authenticated)
         $authHeaders = @{
@@ -128,7 +128,7 @@ Write-Host "Failed: $failed" -ForegroundColor $(if ($failed -gt 0) { "Red" } els
 Write-Host "`nDetailed Results:" -ForegroundColor Cyan
 foreach ($result in $testResults) {
     $color = if ($result.Status -eq "PASS") { "Green" } else { "Red" }
-    $icon = if ($result.Status -eq "PASS") { "✅" } else { "❌" }
+    $icon = if ($result.Status -eq "PASS") { "[PASS]" } else { "[FAIL]" }
     Write-Host "  $icon $($result.Name): $($result.Status)" -ForegroundColor $color
     if ($result.Details) {
         Write-Host "     $($result.Details)" -ForegroundColor Gray
@@ -137,9 +137,9 @@ foreach ($result in $testResults) {
 
 Write-Host "`n========================================" -ForegroundColor Blue
 if ($failed -eq 0) {
-    Write-Host "   🎉 ALL TESTS PASSED!" -ForegroundColor Green
+    Write-Host "   [SUCCESS] ALL TESTS PASSED!" -ForegroundColor Green
 } else {
-    Write-Host "   ⚠️  SOME TESTS FAILED" -ForegroundColor Yellow
+    Write-Host "   [WARNING] SOME TESTS FAILED" -ForegroundColor Yellow
     Write-Host "   Check Railway logs and environment variables" -ForegroundColor Yellow
 }
 Write-Host "========================================`n" -ForegroundColor Blue
