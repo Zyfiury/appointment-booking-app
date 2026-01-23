@@ -2,95 +2,200 @@ import express, { Request, Response } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { db } from '../data/database';
 import { v4 as uuidv4 } from 'uuid';
-import {
-  createPaymentIntentWithSplit,
-  confirmPaymentIntent,
-  calculateCommission,
-} from '../services/stripe_service';
+import Stripe from 'stripe';
+import { auditLog } from '../utils/audit';
+import { getIdempotencyKey, getIdempotencyResult, setIdempotencyResult } from '../utils/idempotency';
+import { paymentRateLimit } from '../middleware/rateLimit';
 
 const router = express.Router();
+const stripe = process.env.STRIPE_SECRET_KEY 
+  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' })
+  : null;
 
-// Create payment intent (Stripe)
-router.post('/create-intent', authenticate, async (req: AuthRequest, res: Response) => {
+// Stripe webhook endpoint (source of truth for payment status)
+router.post('/webhook', express.raw({ type: 'application/json' }), (req: Request, res: Response) => {
   try {
+    const signature = req.headers['stripe-signature'];
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+    if (!stripe || !webhookSecret) {
+      console.warn('⚠️ Stripe not configured - webhook verification skipped');
+      // In development, allow unverified webhooks
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(400).json({ error: 'Webhook secret not configured' });
+      }
+    }
+
+    let event;
+    if (stripe && webhookSecret && signature) {
+      try {
+        event = stripe.webhooks.constructEvent(req.body, signature, webhookSecret);
+      } catch (err: any) {
+        console.error('⚠️ Webhook signature verification failed:', err.message);
+        return res.status(400).json({ error: `Webhook signature verification failed: ${err.message}` });
+      }
+    } else {
+      // Development fallback - parse body directly
+      event = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    }
+
+    switch (event.type) {
+      case 'payment_intent.succeeded':
+        handlePaymentSucceeded(event.data.object);
+        break;
+      case 'payment_intent.payment_failed':
+        handlePaymentFailed(event.data.object);
+        break;
+      case 'charge.refunded':
+        handleRefund(event.data.object);
+        break;
+      default:
+        console.log(`Unhandled event type: ${event.type}`);
+    }
+
+    res.json({ received: true });
+  } catch (error) {
+    console.error('Webhook error:', error);
+    res.status(400).json({ error: 'Webhook processing failed' });
+  }
+});
+
+function handlePaymentSucceeded(paymentIntent: any) {
+  // Find payment by payment_intent_id
+  const payments = db.getPayments();
+  const payment = payments.find(p => p.transactionId === paymentIntent.id);
+  
+  if (payment) {
+    // Calculate commission (15% platform, 85% provider)
+    const commissionRate = 0.15;
+    const platformCommission = payment.amount * commissionRate;
+    const providerAmount = payment.amount - platformCommission;
+    
+    db.updatePayment(payment.id, {
+      status: 'completed',
+      transactionId: paymentIntent.id,
+      platformCommission,
+      providerAmount,
+      commissionRate: commissionRate * 100,
+    });
+
+    // Confirm the appointment
+    const appointment = db.getAppointmentById(payment.appointmentId);
+    if (appointment && appointment.status === 'pending') {
+      db.updateAppointment(appointment.id, { status: 'confirmed' });
+    }
+    auditLog({
+      action: 'payment.confirmed',
+      entity: 'payment',
+      entityId: payment.id,
+      userId: appointment?.customerId,
+      meta: { paymentIntentId: paymentIntent.id, appointmentId: payment.appointmentId },
+    });
+  }
+}
+
+function handlePaymentFailed(paymentIntent: any) {
+  const payments = db.getPayments();
+  const payment = payments.find(p => p.transactionId === paymentIntent.id);
+  
+  if (payment) {
+    db.updatePayment(payment.id, { status: 'failed' });
+    const appointment = db.getAppointmentById(payment.appointmentId);
+    auditLog({
+      action: 'payment.failed',
+      entity: 'payment',
+      entityId: payment.id,
+      userId: appointment?.customerId,
+      meta: { paymentIntentId: paymentIntent.id },
+    });
+    // Release any reservation hold
+    if (appointment) {
+      const holds = db.getReservationHolds(appointment.providerId, appointment.date, appointment.time);
+      holds.forEach(hold => {
+        if (hold.customerId === appointment.customerId) {
+          db.deleteReservationHold(hold.id);
+        }
+      });
+    }
+  }
+}
+
+function handleRefund(charge: any) {
+  const payments = db.getPayments();
+  const payment = payments.find(p => p.transactionId === charge.payment_intent);
+  
+  if (payment) {
+    db.updatePayment(payment.id, { status: 'refunded' });
+    const appointment = db.getAppointmentById(payment.appointmentId);
+    auditLog({
+      action: 'payment.refunded',
+      entity: 'payment',
+      entityId: payment.id,
+      userId: appointment?.customerId,
+      meta: { chargeId: charge.id },
+    });
+  }
+}
+
+// Create payment intent (Stripe). Idempotency-Key supported to avoid duplicate charges.
+router.post('/create-intent', authenticate, paymentRateLimit, async (req: AuthRequest, res: Response) => {
+  try {
+    const idemKey = getIdempotencyKey(req);
+    if (idemKey) {
+      const cached = getIdempotencyResult(idemKey);
+      if (cached) return res.status(cached.status).json(cached.body);
+    }
+
     const { appointmentId, amount, currency = 'USD' } = req.body;
 
     if (!appointmentId || !amount) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const appointment = await db.getAppointmentById(appointmentId);
+    const appointment = db.getAppointmentById(appointmentId);
     if (!appointment) {
       return res.status(404).json({ error: 'Appointment not found' });
     }
 
-    // Get provider's Stripe account
-    const provider = await db.getUserById(appointment.providerId);
-    if (!provider || !provider.stripeAccountId) {
-      return res.status(400).json({ 
-        error: 'Provider has not connected their payment account. Please contact the provider.',
+    if (appointment.customerId !== req.userId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    let id: string;
+    let clientSecret: string;
+    let amountCents: number;
+    let currencyStr: string;
+
+    if (stripe) {
+      const pi = await stripe.paymentIntents.create({
+        amount: Math.round(amount * 100),
+        currency: (currency as string).toLowerCase(),
+        metadata: { appointmentId },
+        automatic_payment_methods: { enabled: true },
       });
+      id = pi.id;
+      clientSecret = pi.client_secret ?? '';
+      amountCents = pi.amount;
+      currencyStr = pi.currency;
+    } else {
+      id = `pi_mock_${uuidv4()}`;
+      clientSecret = `pi_mock_${uuidv4()}_secret_${uuidv4()}`;
+      amountCents = amount * 100;
+      currencyStr = (currency as string).toLowerCase();
     }
 
-    // Calculate commission (15% platform fee)
-    const { platformCommission, providerAmount, commissionRate } = calculateCommission(amount);
-
-    let paymentIntent;
-    let useStripe = false;
-
-    // Check if Stripe is configured
-    if (process.env.STRIPE_SECRET_KEY) {
-      try {
-        // Create payment intent with automatic split using Stripe Connect
-        paymentIntent = await createPaymentIntentWithSplit(
-          amount,
-          currency,
-          provider.stripeAccountId,
-          platformCommission
-        );
-        useStripe = true;
-      } catch (error: any) {
-        console.error('Stripe payment creation failed, using mock:', error);
-        // Fallback to mock if Stripe fails
-      }
-    }
-
-    // Fallback to mock payment if Stripe not configured or failed
-    if (!useStripe) {
-      paymentIntent = {
-        id: `pi_${uuidv4()}`,
-        client_secret: `pi_${uuidv4()}_secret_${uuidv4()}`,
-        amount: amount * 100, // Convert to cents
-        currency: currency.toLowerCase(),
-      };
-    }
-
-    // Ensure paymentIntent is defined
-    if (!paymentIntent) {
-      return res.status(500).json({ error: 'Failed to create payment intent' });
-    }
-
-    // Create payment record with commission
-    const payment = await db.createPayment({
+    const payment = db.createPayment({
       appointmentId,
       amount,
       currency,
       status: 'pending',
       paymentMethod: 'card',
-      platformCommission,
-      providerAmount,
-      commissionRate,
-      transactionId: paymentIntent.id,
+      transactionId: id,
     });
 
-    res.json({
-      id: paymentIntent.id,
-      clientSecret: paymentIntent.client_secret || paymentIntent.id,
-      amount: paymentIntent.amount,
-      currency: paymentIntent.currency,
-      paymentId: payment.id,
-      usingStripe: useStripe,
-    });
+    const payload = { id, clientSecret, amount: amountCents, currency: currencyStr, paymentId: payment.id };
+    if (idemKey) setIdempotencyResult(idemKey, 200, payload);
+    res.json(payload);
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
   }
@@ -105,68 +210,47 @@ router.post('/confirm', authenticate, async (req: AuthRequest, res: Response) =>
       return res.status(400).json({ error: 'Missing payment intent ID' });
     }
 
-    // Find payment by transaction ID
-    const payments = await db.getPayments();
+    // In production, confirm with Stripe API
+    // For now, update payment status
+    const payments = db.getPayments();
     const payment = payments.find(p => p.transactionId === paymentIntentId);
     
-    if (!payment) {
-      return res.status(404).json({ error: 'Payment not found' });
+    if (payment) {
+      db.updatePayment(payment.id, { status: 'completed' });
+      res.json({ success: true, payment });
+    } else {
+      res.status(404).json({ error: 'Payment not found' });
     }
-
-    // If Stripe is configured, confirm the payment intent
-    if (process.env.STRIPE_SECRET_KEY) {
-      try {
-        await confirmPaymentIntent(paymentIntentId);
-      } catch (error: any) {
-        console.error('Stripe payment confirmation failed:', error);
-        // Continue anyway - payment might already be confirmed
-      }
-    }
-
-    // Update payment status to completed
-    await db.updatePayment(payment.id, { status: 'completed' });
-    const updatedPayment = await db.getPaymentById(payment.id);
-    
-    res.json({ 
-      success: true, 
-      payment: updatedPayment,
-    });
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 // Get user payments
-router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
+router.get('/', authenticate, (req: AuthRequest, res: Response) => {
   try {
-    const allPayments = await db.getPayments();
-    const payments = await Promise.all(
-      allPayments.map(async (p) => {
-        const appointment = await db.getAppointmentById(p.appointmentId);
-        return { payment: p, appointment };
-      })
-    );
-    const filteredPayments = payments
-      .filter(({ appointment }) => appointment && (
+    const payments = db.getPayments().filter(p => {
+      const appointment = db.getAppointmentById(p.appointmentId);
+      return appointment && (
         appointment.customerId === req.userId ||
         appointment.providerId === req.userId
-      ))
-      .map(({ payment }) => payment);
-    res.json(filteredPayments);
+      );
+    });
+    res.json(payments);
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 // Get payment by ID
-router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
+router.get('/:id', authenticate, (req: AuthRequest, res: Response) => {
   try {
-    const payment = await db.getPaymentById(req.params.id);
+    const payment = db.getPaymentById(req.params.id);
     if (!payment) {
       return res.status(404).json({ error: 'Payment not found' });
     }
 
-    const appointment = await db.getAppointmentById(payment.appointmentId);
+    const appointment = db.getAppointmentById(payment.appointmentId);
     if (!appointment || 
         (appointment.customerId !== req.userId && 
          appointment.providerId !== req.userId)) {
@@ -180,9 +264,9 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
 });
 
 // Refund payment
-router.post('/:id/refund', authenticate, async (req: AuthRequest, res: Response) => {
+router.post('/:id/refund', authenticate, (req: AuthRequest, res: Response) => {
   try {
-    const payment = await db.getPaymentById(req.params.id);
+    const payment = db.getPaymentById(req.params.id);
     if (!payment) {
       return res.status(404).json({ error: 'Payment not found' });
     }
@@ -191,9 +275,8 @@ router.post('/:id/refund', authenticate, async (req: AuthRequest, res: Response)
       return res.status(400).json({ error: 'Payment cannot be refunded' });
     }
 
-    await db.updatePayment(payment.id, { status: 'refunded' });
-    const updatedPayment = await db.getPaymentById(payment.id);
-    res.json({ success: true, payment: updatedPayment });
+    db.updatePayment(payment.id, { status: 'refunded' });
+    res.json({ success: true, payment: db.getPaymentById(payment.id) });
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
   }

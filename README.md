@@ -1,6 +1,12 @@
+<<<<<<< HEAD
+# Appointment Booking Application
+
+A professional, full-stack appointment booking application similar to Booksy. This application allows customers to book appointments with service providers (doctors, consultants, etc.) and enables providers to manage their services and appointments.
+=======
 # Appointment Booking Mobile App
 
 A professional Flutter mobile application for booking appointments with service providers. This app allows customers to book appointments and enables providers to manage their services and appointments.
+>>>>>>> 977022b4e2c96e2f5dbd2736064f2ea6e482d209
 
 ## Features
 
@@ -20,6 +26,61 @@ A professional Flutter mobile application for booking appointments with service 
 
 ## Tech Stack
 
+<<<<<<< HEAD
+### Backend:
+- Node.js with Express
+- TypeScript
+- JSON file-based database (easily migratable to SQL/NoSQL)
+- JWT authentication
+- bcrypt for password hashing
+
+### Frontend:
+- React with TypeScript
+- React Router for navigation
+- Axios for API calls
+- Modern CSS with responsive design
+
+## Installation & Setup
+
+### Prerequisites
+- Node.js (v14 or higher)
+- npm or yarn
+
+### Step 1: Install Dependencies
+
+Install server dependencies:
+```bash
+cd server
+npm install
+```
+
+Install client dependencies:
+```bash
+cd client
+npm install
+```
+
+### Step 2: Run the Application
+
+**Terminal 1 - Start the backend server:**
+```bash
+cd server
+npm run dev
+```
+Server will run on http://localhost:5000
+
+**Terminal 2 - Start the frontend client:**
+```bash
+cd client
+npm start
+```
+Frontend will run on http://localhost:3000
+
+### Step 3: Access the Application
+
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:5000
+=======
 - **Flutter** - Cross-platform mobile framework
 - **Dart** - Programming language
 - **Provider** - State management
@@ -119,6 +180,7 @@ lib/
 └── theme/                   # App theme
     └── app_theme.dart
 ```
+>>>>>>> 977022b4e2c96e2f5dbd2736064f2ea6e482d209
 
 ## Usage Guide
 
@@ -147,6 +209,85 @@ lib/
    - Mark appointments as completed
    - Cancel appointments if needed
 
+<<<<<<< HEAD
+## API Endpoints
+
+### Authentication
+- `POST /api/auth/register` - Register new user
+- `POST /api/auth/login` - Login user
+- `GET /api/auth/me` - Get current user (protected)
+
+### Users
+- `GET /api/users/providers` - Get all providers
+- `GET /api/users/providers/:id` - Get provider by ID
+- `GET /api/users/profile` - Get user profile (protected)
+- `PATCH /api/users/profile` - Update user profile (protected)
+
+### Services
+- `GET /api/services` - Get all services (optional ?providerId query)
+- `GET /api/services/:id` - Get service by ID
+- `POST /api/services` - Create service (provider only)
+- `PATCH /api/services/:id` - Update service (provider only)
+- `DELETE /api/services/:id` - Delete service (provider only)
+
+### Appointments
+- `GET /api/appointments` - Get user's appointments (protected)
+- `GET /api/appointments/:id` - Get appointment by ID (protected)
+- `POST /api/appointments` - Create appointment (customer only)
+- `PATCH /api/appointments/:id` - Update appointment (protected)
+- `DELETE /api/appointments/:id` - Delete appointment (protected)
+
+## Project Structure
+
+```
+cursor/
+├── server/
+│   ├── data/
+│   │   ├── database.ts          # Database operations
+│   │   └── db.json              # JSON database file (auto-generated)
+│   ├── middleware/
+│   │   └── auth.ts              # Authentication middleware
+│   ├── routes/
+│   │   ├── auth.ts              # Authentication routes
+│   │   ├── appointments.ts      # Appointment routes
+│   │   ├── users.ts             # User routes
+│   │   └── services.ts          # Service routes
+│   ├── index.ts                 # Server entry point
+│   ├── package.json
+│   └── tsconfig.json
+├── client/
+│   ├── public/
+│   │   └── index.html
+│   ├── src/
+│   │   ├── components/          # React components
+│   │   ├── context/             # React context (Auth)
+│   │   ├── pages/               # Page components
+│   │   ├── services/            # API service
+│   │   ├── App.tsx
+│   │   └── index.tsx
+│   ├── package.json
+│   └── tsconfig.json
+└── README.md
+```
+
+## Security Notes
+
+- Passwords are hashed using bcrypt
+- JWT tokens are used for authentication
+- Protected routes require valid authentication
+- Role-based access control for different user types
+
+## Future Enhancements
+
+- Email notifications for appointments
+- Calendar view for appointments
+- Recurring appointments
+- Payment integration
+- Reviews and ratings
+- Advanced search and filtering
+- Real-time notifications
+- Database migration to PostgreSQL/MongoDB
+=======
 ## Building for Production
 
 ### Android APK:
@@ -176,6 +317,7 @@ If you're running on a physical device:
 ### Android Emulator Issues
 
 The app uses `10.0.2.2` for Android emulator, which is the special IP that maps to `localhost` on your host machine.
+>>>>>>> 977022b4e2c96e2f5dbd2736064f2ea6e482d209
 
 ## License
 

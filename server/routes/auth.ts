@@ -3,29 +3,27 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { db } from '../data/database';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { authRateLimit } from '../middleware/rateLimit';
+import { validate, schemas } from '../middleware/validation';
+import { sendPasswordResetEmail } from '../utils/email';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
-router.post('/register', async (req: Request, res: Response) => {
+// Store for password reset tokens (in production, use Redis or database)
+const passwordResetTokens = new Map<string, { userId: string; expiresAt: number }>();
+
+router.post('/register', validate(schemas.register), async (req: Request, res: Response) => {
   try {
     const { email, password, name, role, phone } = req.body;
 
-    if (!email || !password || !name || !role) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    if (role !== 'customer' && role !== 'provider') {
-      return res.status(400).json({ error: 'Invalid role' });
-    }
-
-    const existingUser = await db.getUserByEmail(email);
+    const existingUser = db.getUserByEmail(email);
     if (existingUser) {
       return res.status(400).json({ error: 'User already exists' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = await db.createUser({
+    const user = db.createUser({
       email,
       password: hashedPassword,
       name,
@@ -47,6 +45,7 @@ router.post('/register', async (req: Request, res: Response) => {
         name: user.name,
         role: user.role,
         phone: user.phone,
+        profilePicture: user.profilePicture,
       },
     });
   } catch (error) {
@@ -54,15 +53,11 @@ router.post('/register', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/login', async (req: Request, res: Response) => {
+router.post('/login', authRateLimit, validate(schemas.login), async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password required' });
-    }
-
-    const user = await db.getUserByEmail(email);
+    const user = db.getUserByEmail(email);
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -86,6 +81,7 @@ router.post('/login', async (req: Request, res: Response) => {
         name: user.name,
         role: user.role,
         phone: user.phone,
+        profilePicture: user.profilePicture,
       },
     });
   } catch (error) {
@@ -93,37 +89,133 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/google', async (req: Request, res: Response) => {
+router.post('/forgot-password', authRateLimit, async (req: Request, res: Response) => {
   try {
-    const { idToken, accessToken, email, name, photoUrl } = req.body;
+    const { email } = req.body;
 
     if (!email) {
       return res.status(400).json({ error: 'Email is required' });
     }
 
-    // Check if user exists
-    let user = await db.getUserByEmail(email);
+    const user = db.getUserByEmail(email);
+    if (!user) {
+      // Don't reveal if user exists for security
+      return res.json({ message: 'If the email exists, a reset link has been sent' });
+    }
+
+    // Generate reset token
+    const resetToken = jwt.sign(
+      { userId: user.id, type: 'password-reset' },
+      JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    // Store token (in production, store in database)
+    passwordResetTokens.set(resetToken, {
+      userId: user.id,
+      expiresAt: Date.now() + 3600000, // 1 hour
+    });
+
+    // Build reset URL
+    const frontendUrl = process.env.FRONTEND_URL || 'https://yourapp.com';
+    const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
+
+    // Send password reset email
+    const emailSent = await sendPasswordResetEmail(email, resetToken, resetUrl);
+
+    // In development, also log the token for testing
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`Password reset token for ${email}: ${resetToken}`);
+      console.log(`Reset link: ${resetUrl}`);
+    }
+
+    res.json({ 
+      message: 'If the email exists, a reset link has been sent',
+      // In development only, return token for testing
+      token: process.env.NODE_ENV === 'development' ? resetToken : undefined,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.post('/reset-password', async (req: Request, res: Response) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({ error: 'Token and new password are required' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    // Verify token
+    let decoded: any;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (error) {
+      return res.status(400).json({ error: 'Invalid or expired token' });
+    }
+
+    // Check if token is in store
+    const tokenData = passwordResetTokens.get(token);
+    if (!tokenData || tokenData.expiresAt < Date.now()) {
+      return res.status(400).json({ error: 'Invalid or expired token' });
+    }
+
+    // Update password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const updated = db.updateUser(tokenData.userId, { password: hashedPassword });
+
+    if (!updated) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Remove used token
+    passwordResetTokens.delete(token);
+
+    res.json({ message: 'Password reset successfully' });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.post('/google', async (req: Request, res: Response) => {
+  try {
+    const { idToken, email, name, photoUrl } = req.body;
+
+    if (!email || !name) {
+      return res.status(400).json({ error: 'Email and name are required' });
+    }
+
+    // In production, verify idToken with Google
+    // For now, check if user exists or create new one
+    let user = db.getUserByEmail(email);
 
     if (!user) {
-      // Create new user from Google account
-      // Default role to 'customer', can be changed later
-      user = await db.createUser({
+      // Create new user with Google account
+      user = db.createUser({
         email,
-        password: '', // Google users don't have a password
-        name: name || 'Google User',
+        password: '', // No password for Google users
+        name,
         role: 'customer', // Default role
-        phone: undefined,
-        profilePicture: photoUrl || undefined,
+        profilePicture: photoUrl,
       });
     } else {
-      // Update profile picture if provided and different
-      if (photoUrl && user.profilePicture !== photoUrl) {
-        // Note: You might want to add an updateProfilePicture method to db
-        // For now, we'll just use the existing user
+      // Update profile picture if provided
+      if (photoUrl && !user.profilePicture) {
+        db.updateUser(user.id, { profilePicture: photoUrl });
+        user = db.getUserById(user.id);
       }
     }
 
-    // Generate JWT token
+    // Defensive: db.getUserById can return undefined; ensure we always have a user object.
+    if (!user) {
+      return res.status(500).json({ error: 'Failed to load user after Google sign-in' });
+    }
+
     const token = jwt.sign(
       { userId: user.id, role: user.role },
       JWT_SECRET,
@@ -138,17 +230,16 @@ router.post('/google', async (req: Request, res: Response) => {
         name: user.name,
         role: user.role,
         phone: user.phone,
-        profilePicture: user.profilePicture || photoUrl,
+        profilePicture: user.profilePicture,
       },
     });
   } catch (error) {
-    console.error('Google auth error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-router.get('/me', authenticate, async (req: AuthRequest, res: Response) => {
-  const user = await db.getUserById(req.userId!);
+router.get('/me', authenticate, (req: AuthRequest, res: Response) => {
+  const user = db.getUserById(req.userId!);
   if (!user) {
     return res.status(404).json({ error: 'User not found' });
   }

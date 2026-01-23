@@ -19,18 +19,19 @@ router.post('/connect/create', authenticate, async (req: AuthRequest, res: Respo
       return res.status(403).json({ error: 'Only providers can connect Stripe accounts' });
     }
 
-    const user = await db.getUserById(req.userId!);
+    const user = db.getUserById(req.userId!);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Check if already connected
-    if (user.stripeAccountId) {
-      const status = await getAccountStatus(user.stripeAccountId);
+    // Check if already connected (stripeAccountId not in current User type)
+    const userWithStripe = user as any;
+    if (userWithStripe.stripeAccountId) {
+      const status = await getAccountStatus(userWithStripe.stripeAccountId);
       if (status.chargesEnabled && status.payoutsEnabled) {
         return res.status(400).json({ 
           error: 'Stripe account already connected',
-          accountId: user.stripeAccountId,
+          accountId: userWithStripe.stripeAccountId,
         });
       }
     }
@@ -38,8 +39,8 @@ router.post('/connect/create', authenticate, async (req: AuthRequest, res: Respo
     // Create new Stripe Connect account
     const { accountId, onboardingUrl } = await createConnectAccount(user.email, user.name);
 
-    // Save account ID to user
-    await db.updateUser(req.userId!, { stripeAccountId: accountId });
+    // Save account ID to user (stripeAccountId not in current User type)
+    db.updateUser(req.userId!, { stripeAccountId: accountId } as any);
 
     res.json({
       accountId,
@@ -62,23 +63,24 @@ router.get('/connect/status', authenticate, async (req: AuthRequest, res: Respon
       return res.status(403).json({ error: 'Only providers can check Stripe status' });
     }
 
-    const user = await db.getUserById(req.userId!);
+    const user = db.getUserById(req.userId!);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    if (!user.stripeAccountId) {
+    const userWithStripe = user as any;
+    if (!userWithStripe.stripeAccountId) {
       return res.json({
         connected: false,
         message: 'No Stripe account connected',
       });
     }
 
-    const status = await getAccountStatus(user.stripeAccountId);
+    const status = await getAccountStatus(userWithStripe.stripeAccountId);
 
     res.json({
       connected: true,
-      accountId: user.stripeAccountId,
+      accountId: userWithStripe.stripeAccountId,
       chargesEnabled: status.chargesEnabled,
       payoutsEnabled: status.payoutsEnabled,
       detailsSubmitted: status.detailsSubmitted,
@@ -100,12 +102,13 @@ router.get('/connect/login', authenticate, async (req: AuthRequest, res: Respons
       return res.status(403).json({ error: 'Only providers can access Stripe dashboard' });
     }
 
-    const user = await db.getUserById(req.userId!);
-    if (!user || !user.stripeAccountId) {
+    const user = db.getUserById(req.userId!);
+    const userWithStripe = user as any;
+    if (!user || !userWithStripe.stripeAccountId) {
       return res.status(404).json({ error: 'Stripe account not connected' });
     }
 
-    const loginUrl = await createLoginLink(user.stripeAccountId);
+    const loginUrl = await createLoginLink(userWithStripe.stripeAccountId);
 
     res.json({
       loginUrl,
