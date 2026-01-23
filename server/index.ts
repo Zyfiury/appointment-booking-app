@@ -10,6 +10,10 @@ import availabilityRoutes from './routes/availability';
 import favoritesRoutes from './routes/favorites';
 import providerImagesRoutes from './routes/provider_images';
 import analyticsRoutes from './routes/analytics';
+import statsRoutes from './routes/stats';
+import policiesRoutes from './routes/policies';
+import supportRoutes from './routes/support';
+import adminRoutes from './routes/admin';
 import { generalRateLimit } from './middleware/rateLimit';
 
 const app = express();
@@ -31,6 +35,10 @@ app.use('/api/availability', availabilityRoutes);
 app.use('/api/favorites', favoritesRoutes);
 app.use('/api/provider-images', providerImagesRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/stats', statsRoutes);
+app.use('/api/policies', policiesRoutes);
+app.use('/api/support', supportRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.get('/api/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', message: 'Server is running' });
