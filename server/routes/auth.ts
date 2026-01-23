@@ -5,13 +5,21 @@ import { db } from '../data/database';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { authRateLimit } from '../middleware/rateLimit';
 import { validate, schemas } from '../middleware/validation';
-import { sendPasswordResetEmail } from '../utils/email';
+import { sendPasswordResetEmail, sendVerificationEmail } from '../utils/email';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
 // Store for password reset tokens (in production, use Redis or database)
 const passwordResetTokens = new Map<string, { userId: string; expiresAt: number }>();
+
+// Store for email verification codes (in production, use Redis or database)
+const verificationCodes = new Map<string, { userId: string; code: string; expiresAt: number }>();
+
+// Generate a 6-digit verification code
+function generateVerificationCode(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
 
 router.post('/register', validate(schemas.register), async (req: Request, res: Response) => {
   try {
@@ -29,10 +37,32 @@ router.post('/register', validate(schemas.register), async (req: Request, res: R
       name,
       role,
       phone,
+      emailVerified: false, // New users start unverified
     });
 
+    // Generate verification code
+    const verificationCode = generateVerificationCode();
+    const expiresAt = Date.now() + 15 * 60 * 1000; // 15 minutes
+
+    // Store verification code
+    verificationCodes.set(user.id, {
+      userId: user.id,
+      code: verificationCode,
+      expiresAt,
+    });
+
+    // Send verification email
+    const emailSent = await sendVerificationEmail(email, verificationCode);
+
+    // In development, also log the code
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`📧 Verification code for ${email}: ${verificationCode}`);
+      console.log(`   Code expires in 15 minutes`);
+    }
+
+    // Return token but user is not verified yet
     const token = jwt.sign(
-      { userId: user.id, role: user.role },
+      { userId: user.id, role: user.role, emailVerified: false },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -46,9 +76,16 @@ router.post('/register', validate(schemas.register), async (req: Request, res: R
         role: user.role,
         phone: user.phone,
         profilePicture: user.profilePicture,
+        emailVerified: false,
       },
+      // In development, return code for testing
+      verificationCode: process.env.NODE_ENV === 'development' ? verificationCode : undefined,
+      message: emailSent 
+        ? 'Registration successful! Please check your email for the verification code.'
+        : 'Registration successful! Please check your email for the verification code. (Email not configured - check console for code)',
     });
   } catch (error) {
+    console.error('Registration error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -68,7 +105,7 @@ router.post('/login', authRateLimit, validate(schemas.login), async (req: Reques
     }
 
     const token = jwt.sign(
-      { userId: user.id, role: user.role },
+      { userId: user.id, role: user.role, emailVerified: user.emailVerified || false },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -82,7 +119,10 @@ router.post('/login', authRateLimit, validate(schemas.login), async (req: Reques
         role: user.role,
         phone: user.phone,
         profilePicture: user.profilePicture,
+        emailVerified: user.emailVerified || false,
       },
+      // Warn if email not verified (but still allow login)
+      warning: !user.emailVerified ? 'Please verify your email address to access all features.' : undefined,
     });
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
@@ -195,13 +235,14 @@ router.post('/google', async (req: Request, res: Response) => {
     let user = db.getUserByEmail(email);
 
     if (!user) {
-      // Create new user with Google account
+      // Create new user with Google account (Google already verified the email)
       user = db.createUser({
         email,
         password: '', // No password for Google users
         name,
         role: 'customer', // Default role
         profilePicture: photoUrl,
+        emailVerified: true, // Google sign-in means email is already verified
       });
     } else {
       // Update profile picture if provided
@@ -238,6 +279,138 @@ router.post('/google', async (req: Request, res: Response) => {
   }
 });
 
+// Verify email with code
+router.post('/verify-email', authRateLimit, validate(schemas.verifyEmail), async (req: Request, res: Response) => {
+  try {
+    const { code } = req.body;
+    const authHeader = req.headers.authorization;
+
+    if (!code) {
+      return res.status(400).json({ error: 'Verification code is required' });
+    }
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const token = authHeader.substring(7);
+    let decoded: any;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (error) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    const userId = decoded.userId;
+    const storedCode = verificationCodes.get(userId);
+
+    if (!storedCode) {
+      return res.status(400).json({ error: 'No verification code found. Please request a new one.' });
+    }
+
+    if (storedCode.expiresAt < Date.now()) {
+      verificationCodes.delete(userId);
+      return res.status(400).json({ error: 'Verification code has expired. Please request a new one.' });
+    }
+
+    if (storedCode.code !== code) {
+      return res.status(400).json({ error: 'Invalid verification code' });
+    }
+
+    // Verify the user's email
+    const updated = db.updateUser(userId, { emailVerified: true });
+    if (!updated) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Remove used verification code
+    verificationCodes.delete(userId);
+
+    // Generate new token with verified status
+    const newToken = jwt.sign(
+      { userId: updated.id, role: updated.role, emailVerified: true },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      message: 'Email verified successfully',
+      token: newToken,
+      user: {
+        id: updated.id,
+        email: updated.email,
+        name: updated.name,
+        role: updated.role,
+        phone: updated.phone,
+        profilePicture: updated.profilePicture,
+        emailVerified: true,
+      },
+    });
+  } catch (error) {
+    console.error('Email verification error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Resend verification code
+router.post('/resend-verification', authRateLimit, async (req: Request, res: Response) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const token = authHeader.substring(7);
+    let decoded: any;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (error) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    const userId = decoded.userId;
+    const user = db.getUserById(userId);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (user.emailVerified) {
+      return res.status(400).json({ error: 'Email is already verified' });
+    }
+
+    // Generate new verification code
+    const verificationCode = generateVerificationCode();
+    const expiresAt = Date.now() + 15 * 60 * 1000; // 15 minutes
+
+    // Store verification code
+    verificationCodes.set(userId, {
+      userId: user.id,
+      code: verificationCode,
+      expiresAt,
+    });
+
+    // Send verification email
+    const emailSent = await sendVerificationEmail(user.email, verificationCode);
+
+    // In development, also log the code
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`📧 Verification code for ${user.email}: ${verificationCode}`);
+      console.log(`   Code expires in 15 minutes`);
+    }
+
+    res.json({
+      message: 'Verification code sent successfully',
+      // In development, return code for testing
+      verificationCode: process.env.NODE_ENV === 'development' ? verificationCode : undefined,
+    });
+  } catch (error) {
+    console.error('Resend verification error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 router.get('/me', authenticate, (req: AuthRequest, res: Response) => {
   const user = db.getUserById(req.userId!);
   if (!user) {
@@ -251,6 +424,7 @@ router.get('/me', authenticate, (req: AuthRequest, res: Response) => {
     role: user.role,
     phone: user.phone,
     profilePicture: user.profilePicture,
+    emailVerified: user.emailVerified || false,
   });
 });
 

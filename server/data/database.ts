@@ -13,6 +13,7 @@ export interface User {
   address?: string;
   profilePicture?: string;
   cancellationPolicy?: CancellationPolicy; // Provider-level default policy
+  emailVerified?: boolean; // Email verification status
   createdAt: string;
 }
 

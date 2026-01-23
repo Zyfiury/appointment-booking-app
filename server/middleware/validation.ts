@@ -55,6 +55,10 @@ export const schemas = {
     phone: z.string().optional(),
   }),
 
+  verifyEmail: z.object({
+    code: z.string().length(6, 'Verification code must be 6 digits').regex(/^\d+$/, 'Verification code must contain only numbers'),
+  }),
+
   login: z.object({
     email: z.string().email('Invalid email address'),
     password: z.string().min(1, 'Password is required'),
