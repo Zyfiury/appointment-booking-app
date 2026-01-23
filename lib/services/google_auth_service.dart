@@ -48,11 +48,27 @@ class GoogleAuthService {
           'user': response.data['user'],
         };
       } on DioException catch (e) {
-        // If user doesn't exist, backend should create account
-        if (e.response?.statusCode == 404) {
+        // Handle specific error types
+        if (e.type == DioExceptionType.connectionTimeout ||
+            e.type == DioExceptionType.receiveTimeout) {
+          return {
+            'success': false,
+            'error': 'Connection timeout. Please check if the backend server is running on port 5000.',
+          };
+        } else if (e.type == DioExceptionType.connectionError) {
+          return {
+            'success': false,
+            'error': 'Cannot connect to server. Make sure the backend is running at http://10.0.2.2:5000',
+          };
+        } else if (e.response?.statusCode == 404) {
           return {
             'success': false,
             'error': 'Account not found. Please register first.',
+          };
+        } else if (e.response != null) {
+          return {
+            'success': false,
+            'error': e.response?.data['error'] ?? 'Google sign in failed: ${e.message}',
           };
         }
         throw e;

@@ -5,6 +5,7 @@ import 'api_service.dart';
 class SearchFilters {
   final String? query;
   final String? category;
+  final String? subcategory;
   final double? minPrice;
   final double? maxPrice;
   final double? minRating;
@@ -16,6 +17,7 @@ class SearchFilters {
   SearchFilters({
     this.query,
     this.category,
+    this.subcategory,
     this.minPrice,
     this.maxPrice,
     this.minRating,
@@ -29,6 +31,7 @@ class SearchFilters {
     final params = <String, dynamic>{};
     if (query != null && query!.isNotEmpty) params['q'] = query;
     if (category != null) params['category'] = category;
+    if (subcategory != null) params['subcategory'] = subcategory;
     if (minPrice != null) params['minPrice'] = minPrice;
     if (maxPrice != null) params['maxPrice'] = maxPrice;
     if (minRating != null) params['minRating'] = minRating;
@@ -49,7 +52,17 @@ class SearchService {
         '/users/providers/search',
         queryParameters: filters.toQueryParams(),
       );
-      final List<dynamic> data = response.data;
+      
+      // Handle paginated or plain list response
+      dynamic responseData = response.data;
+      if (responseData is Map<String, dynamic> && responseData.containsKey('data')) {
+        responseData = responseData['data'];
+      }
+      if (responseData is! List) {
+        throw Exception('Invalid response format: expected List');
+      }
+      
+      final List<dynamic> data = responseData as List<dynamic>;
       return data.map((json) => Provider.fromJson(json)).toList();
     } catch (e) {
       throw Exception('Failed to search providers: $e');
@@ -62,7 +75,17 @@ class SearchService {
         '/services/search',
         queryParameters: filters.toQueryParams(),
       );
-      final List<dynamic> data = response.data;
+      
+      // Handle paginated or plain list response
+      dynamic responseData = response.data;
+      if (responseData is Map<String, dynamic> && responseData.containsKey('data')) {
+        responseData = responseData['data'];
+      }
+      if (responseData is! List) {
+        throw Exception('Invalid response format: expected List');
+      }
+      
+      final List<dynamic> data = responseData as List<dynamic>;
       return data.map((json) => Service.fromJson(json)).toList();
     } catch (e) {
       throw Exception('Failed to search services: $e');

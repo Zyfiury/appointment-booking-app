@@ -19,8 +19,7 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 
 router.get('/providers', async (req, res: Response) => {
   try {
-    const allUsers = await db.getUsers();
-    const providers = allUsers.filter(u => u.role === 'provider');
+    const providers = await db.getProviders();
     const reviews = await db.getReviews();
     
     res.json(providers.map(p => {
@@ -48,8 +47,7 @@ router.get('/providers', async (req, res: Response) => {
 
 router.get('/providers/search', async (req, res: Response) => {
   try {
-    const allUsers = await db.getUsers();
-    let providers = allUsers.filter(u => u.role === 'provider');
+    let providers = await db.getProviders();
     const reviews = await db.getReviews();
     const { q, category, minPrice, maxPrice, minRating, latitude, longitude, radius, sortBy } = req.query;
 
@@ -131,8 +129,8 @@ router.get('/providers/search', async (req, res: Response) => {
 
 router.get('/providers/:id', async (req, res: Response) => {
   try {
-    const provider = await db.getUserById(req.params.id);
-    if (!provider || provider.role !== 'provider') {
+    const provider = await db.getProviderById(req.params.id);
+    if (!provider) {
       return res.status(404).json({ error: 'Provider not found' });
     }
     const reviews = await db.getReviews();
@@ -182,12 +180,80 @@ router.patch('/profile', authenticate, async (req: AuthRequest, res: Response) =
   try {
     const { name, phone, latitude, longitude, address, profilePicture } = req.body;
     const updates: any = {};
-    if (name) updates.name = name;
-    if (phone !== undefined) updates.phone = phone;
-    if (latitude !== undefined) updates.latitude = latitude;
-    if (longitude !== undefined) updates.longitude = longitude;
-    if (address !== undefined) updates.address = address;
-    if (profilePicture !== undefined) updates.profilePicture = profilePicture;
+
+    // Validate name if provided
+    if (name !== undefined) {
+      if (typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 100) {
+        return res.status(400).json({ error: 'Name must be between 2 and 100 characters' });
+      }
+      updates.name = name.trim();
+    }
+
+    // Validate phone if provided
+    if (phone !== undefined) {
+      if (phone !== null && phone !== '') {
+        // Basic phone validation (allows various formats)
+        const phoneRegex = /^[\d\s\-\+\(\)]+$/;
+        if (typeof phone !== 'string' || !phoneRegex.test(phone) || phone.length > 20) {
+          return res.status(400).json({ error: 'Invalid phone number format' });
+        }
+        updates.phone = phone.trim();
+      } else {
+        updates.phone = null;
+      }
+    }
+
+    // Validate coordinates if provided
+    if (latitude !== undefined) {
+      const lat = parseFloat(latitude);
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        return res.status(400).json({ error: 'Latitude must be between -90 and 90' });
+      }
+      updates.latitude = lat;
+    }
+
+    if (longitude !== undefined) {
+      const lng = parseFloat(longitude);
+      if (isNaN(lng) || lng < -180 || lng > 180) {
+        return res.status(400).json({ error: 'Longitude must be between -180 and 180' });
+      }
+      updates.longitude = lng;
+    }
+
+    // Validate address if provided
+    if (address !== undefined) {
+      if (address !== null && address !== '') {
+        if (typeof address !== 'string' || address.trim().length > 200) {
+          return res.status(400).json({ error: 'Address cannot exceed 200 characters' });
+        }
+        updates.address = address.trim();
+      } else {
+        updates.address = null;
+      }
+    }
+
+    // Validate profile picture URL if provided
+    if (profilePicture !== undefined) {
+      if (profilePicture !== null && profilePicture !== '') {
+        if (typeof profilePicture !== 'string' || profilePicture.length > 500) {
+          return res.status(400).json({ error: 'Profile picture URL cannot exceed 500 characters' });
+        }
+        // Basic URL validation
+        try {
+          new URL(profilePicture);
+        } catch {
+          return res.status(400).json({ error: 'Invalid profile picture URL format' });
+        }
+        updates.profilePicture = profilePicture.trim();
+      } else {
+        updates.profilePicture = null;
+      }
+    }
+
+    // Check if there are any updates
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
 
     const updated = await db.updateUser(req.userId!, updates);
     if (!updated) {
@@ -203,9 +269,11 @@ router.patch('/profile', authenticate, async (req: AuthRequest, res: Response) =
       latitude: updated.latitude,
       longitude: updated.longitude,
       address: updated.address,
+      profilePicture: updated.profilePicture,
     });
   } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    console.error('Error updating profile:', error);
+    res.status(500).json({ error: 'Failed to update profile. Please try again.' });
   }
 });
 

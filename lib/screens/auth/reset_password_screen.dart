@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/animated_button.dart';
 import '../../widgets/fade_in_widget.dart';
 import '../../widgets/layered_card.dart';
 import '../../services/auth_service.dart';
 import 'login_screen.dart';
+import '../../providers/theme_provider.dart';
+
 
 class ResetPasswordScreen extends StatefulWidget {
   final String token;
@@ -37,6 +40,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
   Future<void> _resetPassword() async {
     if (!_formKey.currentState!.validate()) return;
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
 
     setState(() {
       _loading = true;
@@ -64,9 +69,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
         }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text('Failed to reset password. The link may have expired.'),
-            backgroundColor: AppTheme.errorColor,
+            backgroundColor: colors.errorColor,
           ),
         );
       }
@@ -75,7 +80,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error: $e'),
-            backgroundColor: AppTheme.errorColor,
+            backgroundColor: colors.errorColor,
           ),
         );
       }
@@ -88,16 +93,19 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
+
     return Scaffold(
-      backgroundColor: AppTheme.backgroundColor,
+      backgroundColor: colors.backgroundColor,
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.transparent,
-        title: const Text('Reset Password'),
+        title: Text('Reset Password'),
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppTheme.darkGradient,
+        decoration: BoxDecoration(
+          gradient: colors.backgroundGradient,
         ),
         child: Center(
           child: SingleChildScrollView(
@@ -107,8 +115,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                 margin: EdgeInsets.zero,
                 padding: const EdgeInsets.all(24),
                 child: _success
-                    ? _buildSuccessView()
-                    : _buildFormView(),
+                    ? _buildSuccessView(colors)
+                    : _buildFormView(colors),
               ),
             ),
           ),
@@ -117,25 +125,25 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     );
   }
 
-  Widget _buildFormView() {
+  Widget _buildFormView(ThemeColors colors) {
     return Form(
       key: _formKey,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Icon(
+          Icon(
             Icons.lock_outline,
             size: 64,
-            color: AppTheme.primaryColor,
+            color: colors.primaryColor,
           ),
           const SizedBox(height: 24),
-          const Text(
+          Text(
             'Reset Password',
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
-              color: AppTheme.textPrimary,
+              color: colors.textPrimary,
             ),
             textAlign: TextAlign.center,
           ),
@@ -144,7 +152,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             'Enter your new password below.',
             style: TextStyle(
               fontSize: 14,
-              color: AppTheme.textSecondary,
+              color: colors.textSecondary,
             ),
             textAlign: TextAlign.center,
           ),
@@ -152,7 +160,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
           TextFormField(
             controller: _passwordController,
             obscureText: _obscurePassword,
-            style: const TextStyle(color: AppTheme.textPrimary),
+            style: TextStyle(color: colors.textPrimary),
             validator: (value) {
               if (value == null || value.isEmpty) {
                 return 'Password is required';
@@ -164,12 +172,12 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             },
             decoration: InputDecoration(
               labelText: 'New Password',
-              labelStyle: const TextStyle(color: AppTheme.textSecondary),
-              prefixIcon: const Icon(Icons.lock_outline, color: AppTheme.primaryColor),
+              labelStyle: TextStyle(color: colors.textSecondary),
+              prefixIcon: Icon(Icons.lock_outline, color: colors.primaryColor),
               suffixIcon: IconButton(
                 icon: Icon(
                   _obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                  color: AppTheme.textSecondary,
+                  color: colors.textSecondary,
                 ),
                 onPressed: () {
                   setState(() {
@@ -178,18 +186,18 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                 },
               ),
               filled: true,
-              fillColor: AppTheme.surfaceColor,
+              fillColor: colors.surfaceColor,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.borderColor),
+                borderSide: BorderSide(color: colors.borderColor),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.borderColor),
+                borderSide: BorderSide(color: colors.borderColor),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: AppTheme.primaryColor, width: 2),
+                borderSide: BorderSide(color: colors.primaryColor, width: 2),
               ),
             ),
           ),
@@ -197,7 +205,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
           TextFormField(
             controller: _confirmPasswordController,
             obscureText: _obscureConfirmPassword,
-            style: const TextStyle(color: AppTheme.textPrimary),
+            style: TextStyle(color: colors.textPrimary),
             validator: (value) {
               if (value == null || value.isEmpty) {
                 return 'Please confirm your password';
@@ -209,12 +217,12 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             },
             decoration: InputDecoration(
               labelText: 'Confirm Password',
-              labelStyle: const TextStyle(color: AppTheme.textSecondary),
-              prefixIcon: const Icon(Icons.lock_outline, color: AppTheme.primaryColor),
+              labelStyle: TextStyle(color: colors.textSecondary),
+              prefixIcon: Icon(Icons.lock_outline, color: colors.primaryColor),
               suffixIcon: IconButton(
                 icon: Icon(
                   _obscureConfirmPassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                  color: AppTheme.textSecondary,
+                  color: colors.textSecondary,
                 ),
                 onPressed: () {
                   setState(() {
@@ -223,18 +231,18 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                 },
               ),
               filled: true,
-              fillColor: AppTheme.surfaceColor,
+              fillColor: colors.surfaceColor,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.borderColor),
+                borderSide: BorderSide(color: colors.borderColor),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.borderColor),
+                borderSide: BorderSide(color: colors.borderColor),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: AppTheme.primaryColor, width: 2),
+                borderSide: BorderSide(color: colors.primaryColor, width: 2),
               ),
             ),
           ),
@@ -243,29 +251,29 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             text: 'Reset Password',
             onPressed: _loading ? null : _resetPassword,
             isLoading: _loading,
-            backgroundColor: AppTheme.primaryColor,
+            backgroundColor: colors.primaryColor,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSuccessView() {
+  Widget _buildSuccessView(ThemeColors colors) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(
+        Icon(
           Icons.check_circle,
           size: 64,
-          color: AppTheme.accentColor,
+          color: colors.accentColor,
         ),
         const SizedBox(height: 24),
-        const Text(
+        Text(
           'Password Reset!',
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
-            color: AppTheme.textPrimary,
+            color: colors.textPrimary,
           ),
         ),
         const SizedBox(height: 12),
@@ -273,7 +281,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
           'Your password has been successfully reset. Redirecting to login...',
           style: TextStyle(
             fontSize: 14,
-            color: AppTheme.textSecondary,
+            color: colors.textSecondary,
           ),
           textAlign: TextAlign.center,
         ),

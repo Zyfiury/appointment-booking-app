@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../models/provider.dart';
+import 'dart:convert';
+import '../../models/provider.dart' as provider_model;
+import 'package:provider/provider.dart';
 import '../../services/service_service.dart';
 import '../../services/map_service.dart';
 import '../../services/search_service.dart';
@@ -10,7 +12,11 @@ import '../../theme/app_theme.dart';
 import '../../widgets/layered_card.dart';
 import '../../widgets/fade_in_widget.dart';
 import '../../widgets/rating_widget.dart';
+import '../../widgets/custom_marker.dart';
+import '../../utils/map_styles.dart';
 import 'book_appointment_screen.dart';
+import '../../providers/theme_provider.dart';
+
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -25,13 +31,15 @@ class _MapScreenState extends State<MapScreen> {
   final SearchService _searchService = SearchService();
   GoogleMapController? _mapController;
   
-  List<Provider> _providers = [];
+  List<provider_model.Provider> _providers = [];
   Position? _currentPosition;
   bool _loading = true;
   Set<Marker> _markers = {};
-  Provider? _selectedProvider;
+  Set<Circle> _circles = {};
+  provider_model.Provider? _selectedProvider;
   double _searchRadius = 50.0; // in kilometers
   bool _showRadiusFilter = false;
+  MapType _mapType = MapType.normal;
 
   @override
   void initState() {
@@ -52,7 +60,7 @@ class _MapScreenState extends State<MapScreen> {
       }
       
       // Load providers with location-based search if available
-      List<Provider> providers = [];
+      List<provider_model.Provider> providers = [];
       try {
         if (position != null) {
           // Use location-based search
@@ -102,7 +110,7 @@ class _MapScreenState extends State<MapScreen> {
       });
 
       debugPrint('🗺️ Map initialized at: ${_currentPosition?.latitude}, ${_currentPosition?.longitude}');
-      debugPrint('📍 Providers with location: ${providers.where((p) => p.latitude != null && p.longitude != null).length}');
+      debugPrint('📍 Providers with location: ${providers.where((p) => (p as provider_model.Provider).latitude != null && (p as provider_model.Provider).longitude != null).length}');
 
       // Wait a bit for map to initialize, then update markers
       await Future.delayed(const Duration(milliseconds: 1000));
@@ -146,23 +154,20 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  BitmapDescriptor _getProviderMarkerIcon(Provider provider) {
-    // Use different marker colors based on rating
-    if (provider.rating != null) {
-      if (provider.rating! >= 4.5) {
-        return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
-      } else if (provider.rating! >= 4.0) {
-        return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueYellow);
-      } else if (provider.rating! >= 3.0) {
-        return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
-      } else {
-        return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed);
-      }
-    }
-    return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
+  Future<BitmapDescriptor> _getProviderMarkerIcon(provider_model.Provider provider) async {
+    return await CustomMarker.createMarkerIcon(
+      providerName: provider.name,
+      rating: provider.rating,
+    );
   }
 
-  Future<void> _openDirections(Provider provider) async {
+  Future<BitmapDescriptor> _getCurrentLocationIcon() async {
+    return await CustomMarker.createCurrentLocationIcon();
+  }
+
+  Future<void> _openDirections(provider_model.Provider provider) async {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
     if (provider.latitude == null || provider.longitude == null) return;
     
     final url = Uri.parse(
@@ -175,8 +180,8 @@ class _MapScreenState extends State<MapScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Could not open directions'),
-            backgroundColor: AppTheme.errorColor,
+            content: Text('Could not open directions'),
+            backgroundColor: colors.errorColor,
           ),
         );
       }
@@ -202,7 +207,7 @@ class _MapScreenState extends State<MapScreen> {
         _providers = providers;
         _loading = false;
       });
-      _updateMarkers();
+      await _updateMarkers();
     } catch (e) {
       setState(() {
         _loading = false;
@@ -210,11 +215,20 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  void _updateMarkers() {
-    final markers = <Marker>{};
+  String? _getMapStyle() {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final isDark = themeProvider.currentTheme == AppThemeMode.darkProfessional ||
+        themeProvider.currentTheme == AppThemeMode.darkElegant;
+    return isDark ? MapStyles.darkStyle : MapStyles.lightStyle;
+  }
 
-    // Current location marker
+  Future<void> _updateMarkers() async {
+    final markers = <Marker>{};
+    final circles = <Circle>{};
+
+    // Current location marker with custom icon
     if (_currentPosition != null) {
+      final currentLocationIcon = await _getCurrentLocationIcon();
       markers.add(
         Marker(
           markerId: const MarkerId('current_location'),
@@ -222,10 +236,24 @@ class _MapScreenState extends State<MapScreen> {
             _currentPosition!.latitude,
             _currentPosition!.longitude,
           ),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-            BitmapDescriptor.hueBlue,
-          ),
+          icon: currentLocationIcon,
           infoWindow: const InfoWindow(title: 'Your Location'),
+          anchor: const Offset(0.5, 0.5),
+        ),
+      );
+
+      // Add search radius circle
+      circles.add(
+        Circle(
+          circleId: const CircleId('search_radius'),
+          center: LatLng(
+            _currentPosition!.latitude,
+            _currentPosition!.longitude,
+          ),
+          radius: _searchRadius * 1000, // Convert km to meters
+          fillColor: Colors.blue.withOpacity(0.1),
+          strokeColor: Colors.blue.withOpacity(0.5),
+          strokeWidth: 2,
         ),
       );
     }
@@ -234,6 +262,7 @@ class _MapScreenState extends State<MapScreen> {
     int providerMarkerCount = 0;
     for (final provider in _providers) {
       if (provider.latitude != null && provider.longitude != null) {
+        final icon = await _getProviderMarkerIcon(provider);
         markers.add(
           Marker(
             markerId: MarkerId(provider.id),
@@ -241,13 +270,14 @@ class _MapScreenState extends State<MapScreen> {
               provider.latitude!,
               provider.longitude!,
             ),
-            icon: _getProviderMarkerIcon(provider),
+            icon: icon,
             infoWindow: InfoWindow(
               title: provider.name,
               snippet: provider.rating != null
                   ? 'Rating: ${provider.rating!.toStringAsFixed(1)}'
                   : null,
             ),
+            anchor: const Offset(0.5, 1.0), // Pin point at bottom
             onTap: () {
               setState(() {
                 _selectedProvider = provider;
@@ -291,6 +321,7 @@ class _MapScreenState extends State<MapScreen> {
 
     setState(() {
       _markers = markers;
+      _circles = circles;
     });
 
     // Move camera to show all markers
@@ -313,21 +344,61 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
+
     return Scaffold(
-      backgroundColor: AppTheme.backgroundColor,
+      backgroundColor: colors.backgroundColor,
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.transparent,
-        title: const Text('Find Providers'),
+        title: Text('Find Providers'),
         actions: [
+          // Map type switcher
           IconButton(
             icon: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: AppTheme.surfaceColor,
+                color: colors.surfaceColor,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.tune, size: 20),
+              child: Icon(
+                _mapType == MapType.satellite
+                    ? Icons.map
+                    : _mapType == MapType.terrain
+                        ? Icons.terrain
+                        : Icons.satellite,
+                size: 20,
+              ),
+            ),
+            onPressed: () {
+              setState(() {
+                if (_mapType == MapType.normal) {
+                  _mapType = MapType.satellite;
+                } else if (_mapType == MapType.satellite) {
+                  _mapType = MapType.terrain;
+                } else {
+                  _mapType = MapType.normal;
+                }
+              });
+            },
+            tooltip: 'Map type',
+          ),
+          // Radius filter
+          IconButton(
+            icon: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: _showRadiusFilter
+                    ? colors.primaryColor.withOpacity(0.2)
+                    : colors.surfaceColor,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                Icons.tune,
+                size: 20,
+                color: _showRadiusFilter ? colors.primaryColor : null,
+              ),
             ),
             onPressed: () {
               setState(() {
@@ -336,11 +407,12 @@ class _MapScreenState extends State<MapScreen> {
             },
             tooltip: 'Filter radius',
           ),
+          // My location
           IconButton(
             icon: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: AppTheme.surfaceColor,
+                color: colors.surfaceColor,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: const Icon(Icons.my_location, size: 20),
@@ -378,9 +450,10 @@ class _MapScreenState extends State<MapScreen> {
                     15,
                   ),
                 );
-                _updateMarkers();
+                await _updateMarkers();
               }
             },
+            tooltip: 'My location',
           ),
           const SizedBox(width: 8),
         ],
@@ -403,16 +476,24 @@ class _MapScreenState extends State<MapScreen> {
                   buildingsEnabled: true,
                   trafficEnabled: false,
                   markers: _markers,
+                  circles: _circles,
                   myLocationEnabled: true,
                   myLocationButtonEnabled: false,
-                  mapType: MapType.normal,
+                  mapType: _mapType,
                   zoomControlsEnabled: true,
+                  style: _getMapStyle(),
                   onMapCreated: (controller) async {
                     _mapController = controller;
                     debugPrint('🗺️ Map created successfully');
+                    // Apply custom styling
+                    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+                    final isDark = themeProvider.currentTheme == AppThemeMode.darkProfessional ||
+                        themeProvider.currentTheme == AppThemeMode.darkElegant;
+                    controller.setMapStyle(isDark ? MapStyles.darkStyle : MapStyles.lightStyle);
+                    
                     // Wait a moment for map to fully initialize
                     await Future.delayed(const Duration(milliseconds: 1000));
-                    _updateMarkers();
+                    await _updateMarkers();
                     
                     // Ensure camera is positioned correctly
                     if (_currentPosition != null) {
@@ -454,12 +535,12 @@ class _MapScreenState extends State<MapScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
+                          Text(
                             'Search Radius',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
-                              color: AppTheme.textPrimary,
+                              color: colors.textPrimary,
                             ),
                           ),
                           Text(
@@ -467,7 +548,7 @@ class _MapScreenState extends State<MapScreen> {
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
-                              color: AppTheme.primaryColor,
+                              color: colors.primaryColor,
                             ),
                           ),
                         ],
@@ -479,14 +560,14 @@ class _MapScreenState extends State<MapScreen> {
                         max: 100,
                         divisions: 19,
                         label: '${_searchRadius.toStringAsFixed(0)} km',
-                        activeColor: AppTheme.primaryColor,
+                        activeColor: colors.primaryColor,
                         onChanged: (value) {
                           setState(() {
                             _searchRadius = value;
                           });
                         },
-                        onChangeEnd: (value) {
-                          _refreshProviders();
+                        onChangeEnd: (value) async {
+                          await _refreshProviders();
                         },
                       ),
                       const SizedBox(height: 8),
@@ -494,40 +575,40 @@ class _MapScreenState extends State<MapScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           TextButton(
-                            onPressed: () {
+                            onPressed: () async {
                               setState(() {
                                 _searchRadius = 10;
                               });
-                              _refreshProviders();
+                              await _refreshProviders();
                             },
-                            child: const Text('10 km'),
+                            child: Text('10 km'),
                           ),
                           TextButton(
-                            onPressed: () {
+                            onPressed: () async {
                               setState(() {
                                 _searchRadius = 25;
                               });
-                              _refreshProviders();
+                              await _refreshProviders();
                             },
-                            child: const Text('25 km'),
+                            child: Text('25 km'),
                           ),
                           TextButton(
-                            onPressed: () {
+                            onPressed: () async {
                               setState(() {
                                 _searchRadius = 50;
                               });
-                              _refreshProviders();
+                              await _refreshProviders();
                             },
-                            child: const Text('50 km'),
+                            child: Text('50 km'),
                           ),
                           TextButton(
-                            onPressed: () {
+                            onPressed: () async {
                               setState(() {
                                 _searchRadius = 100;
                               });
-                              _refreshProviders();
+                              await _refreshProviders();
                             },
-                            child: const Text('100 km'),
+                            child: Text('100 km'),
                           ),
                         ],
                       ),
@@ -536,13 +617,14 @@ class _MapScreenState extends State<MapScreen> {
                 ),
               ),
             ),
-          // Selected Provider Card
+          // Selected Provider Card with slide animation
           if (_selectedProvider != null)
             Positioned(
               bottom: 16,
               left: 16,
               right: 16,
-              child: FadeInWidget(
+              child: SlideInWidget(
+                offset: const Offset(0, 1), // Slide from bottom
                 child: FloatingCard(
                   margin: EdgeInsets.zero,
                   padding: const EdgeInsets.all(20),
@@ -567,10 +649,10 @@ class _MapScreenState extends State<MapScreen> {
                               children: [
                                 Text(
                                   _selectedProvider!.name,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
-                                    color: AppTheme.textPrimary,
+                                    color: colors.textPrimary,
                                   ),
                                 ),
                                 if (_selectedProvider!.rating != null) ...[
@@ -588,14 +670,14 @@ class _MapScreenState extends State<MapScreen> {
                                       Icon(
                                         Icons.navigation,
                                         size: 12,
-                                        color: AppTheme.textSecondary,
+                                        color: colors.textSecondary,
                                       ),
                                       const SizedBox(width: 4),
                                       Text(
                                         '${_selectedProvider!.distance!.toStringAsFixed(1)} km away',
                                         style: TextStyle(
                                           fontSize: 12,
-                                          color: AppTheme.textSecondary,
+                                          color: colors.textSecondary,
                                         ),
                                       ),
                                     ],
@@ -607,7 +689,7 @@ class _MapScreenState extends State<MapScreen> {
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              gradient: AppTheme.primaryGradient,
+                              gradient: colors.primaryGradient,
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: const Icon(
@@ -625,7 +707,7 @@ class _MapScreenState extends State<MapScreen> {
                             Icon(
                               Icons.place,
                               size: 14,
-                              color: AppTheme.textSecondary,
+                              color: colors.textSecondary,
                             ),
                             const SizedBox(width: 6),
                             Expanded(
@@ -633,7 +715,7 @@ class _MapScreenState extends State<MapScreen> {
                                 _selectedProvider!.address!,
                                 style: TextStyle(
                                   fontSize: 13,
-                                  color: AppTheme.textSecondary,
+                                  color: colors.textSecondary,
                                 ),
                               ),
                             ),
@@ -647,7 +729,7 @@ class _MapScreenState extends State<MapScreen> {
                             child: OutlinedButton.icon(
                               onPressed: () => _openDirections(_selectedProvider!),
                               icon: const Icon(Icons.directions, size: 16),
-                              label: const Text('Directions'),
+                              label: Text('Directions'),
                               style: OutlinedButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(vertical: 12),
                               ),
@@ -667,9 +749,9 @@ class _MapScreenState extends State<MapScreen> {
                                 );
                               },
                               icon: const Icon(Icons.book, size: 16),
-                              label: const Text('Book'),
+                              label: Text('Book'),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: AppTheme.primaryColor,
+                                backgroundColor: colors.primaryColor,
                                 foregroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(vertical: 12),
                               ),

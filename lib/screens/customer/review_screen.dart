@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../models/appointment.dart';
 import '../../services/review_service.dart';
 import '../../theme/app_theme.dart';
@@ -7,6 +8,8 @@ import '../../widgets/layered_card.dart';
 import '../../widgets/fade_in_widget.dart';
 import '../../widgets/rating_widget.dart';
 import 'my_appointments_screen.dart';
+import '../../providers/theme_provider.dart';
+
 
 class ReviewScreen extends StatefulWidget {
   final Appointment appointment;
@@ -34,6 +37,8 @@ class _ReviewScreenState extends State<ReviewScreen> {
   }
 
   Future<void> _submitReview() async {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
     if (_commentController.text.trim().isEmpty) {
       setState(() {
         _error = 'Please write a review';
@@ -57,9 +62,9 @@ class _ReviewScreenState extends State<ReviewScreen> {
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text('Review submitted successfully!'),
-            backgroundColor: AppTheme.accentColor,
+            backgroundColor: colors.accentColor,
           ),
         );
       }
@@ -73,16 +78,19 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
+
     return Scaffold(
-      backgroundColor: AppTheme.backgroundColor,
+      backgroundColor: colors.backgroundColor,
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.transparent,
-        title: const Text('Write Review'),
+        title: Text('Write Review'),
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppTheme.darkGradient,
+        decoration: BoxDecoration(
+          gradient: colors.backgroundGradient,
         ),
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
@@ -99,17 +107,17 @@ class _ReviewScreenState extends State<ReviewScreen> {
                     children: [
                       Text(
                         widget.appointment.service.name,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: AppTheme.textPrimary,
+                          color: colors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 8),
                       Text(
                         'Provider: ${widget.appointment.provider.name}',
                         style: TextStyle(
-                          color: AppTheme.textSecondary,
+                          color: colors.textSecondary,
                           fontSize: 14,
                         ),
                       ),
@@ -126,12 +134,12 @@ class _ReviewScreenState extends State<ReviewScreen> {
                   padding: const EdgeInsets.all(24),
                   child: Column(
                     children: [
-                      const Text(
+                      Text(
                         'How was your experience?',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: AppTheme.textPrimary,
+                          color: colors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 24),
@@ -157,23 +165,23 @@ class _ReviewScreenState extends State<ReviewScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Write your review',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
-                          color: AppTheme.textPrimary,
+                          color: colors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 16),
                       TextField(
                         controller: _commentController,
                         maxLines: 6,
-                        style: const TextStyle(color: AppTheme.textPrimary),
+                        style: TextStyle(color: colors.textPrimary),
                         decoration: InputDecoration(
                           hintText: 'Share your experience...',
                           filled: true,
-                          fillColor: AppTheme.surfaceColor,
+                          fillColor: colors.surfaceColor,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,
@@ -184,8 +192,8 @@ class _ReviewScreenState extends State<ReviewScreen> {
                         const SizedBox(height: 12),
                         Text(
                           _error!,
-                          style: const TextStyle(
-                            color: AppTheme.errorColor,
+                          style: TextStyle(
+                            color: colors.errorColor,
                             fontSize: 13,
                           ),
                         ),
@@ -203,7 +211,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
                   icon: Icons.send,
                   isLoading: _submitting,
                   onPressed: _submitting ? null : _submitReview,
-                  backgroundColor: AppTheme.primaryColor,
+                  backgroundColor: colors.primaryColor,
                 ),
               ),
             ],

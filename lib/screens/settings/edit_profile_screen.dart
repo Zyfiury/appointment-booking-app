@@ -9,6 +9,8 @@ import '../../widgets/fade_in_widget.dart';
 import '../../widgets/animated_button.dart';
 import '../../services/image_upload_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../providers/theme_provider.dart';
+
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -50,26 +52,28 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> _pickImage() async {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
     try {
       final source = await showDialog<ImageSource>(
         context: context,
         builder: (context) => AlertDialog(
-          backgroundColor: AppTheme.cardColor,
-          title: const Text(
+          backgroundColor: colors.cardColor,
+          title: Text(
             'Select Image Source',
-            style: TextStyle(color: AppTheme.textPrimary),
+            style: TextStyle(color: colors.textPrimary),
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                leading: const Icon(Icons.photo_library, color: AppTheme.primaryColor),
-                title: const Text('Gallery', style: TextStyle(color: AppTheme.textPrimary)),
+                leading: Icon(Icons.photo_library, color: colors.primaryColor),
+                title: Text('Gallery', style: TextStyle(color: colors.textPrimary)),
                 onTap: () => Navigator.pop(context, ImageSource.gallery),
               ),
               ListTile(
-                leading: const Icon(Icons.camera_alt, color: AppTheme.primaryColor),
-                title: const Text('Camera', style: TextStyle(color: AppTheme.textPrimary)),
+                leading: Icon(Icons.camera_alt, color: colors.primaryColor),
+                title: Text('Camera', style: TextStyle(color: colors.textPrimary)),
                 onTap: () => Navigator.pop(context, ImageSource.camera),
               ),
             ],
@@ -90,7 +94,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to pick image: $e'),
-            backgroundColor: AppTheme.errorColor,
+            backgroundColor: colors.errorColor,
           ),
         );
       }
@@ -99,6 +103,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Future<void> _uploadImage() async {
     if (_selectedImage == null) return;
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
 
     setState(() {
       _uploading = true;
@@ -115,7 +121,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to upload image: $e'),
-            backgroundColor: AppTheme.errorColor,
+            backgroundColor: colors.errorColor,
           ),
         );
       }
@@ -128,6 +134,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
 
     // Upload image first if selected
     if (_selectedImage != null) {
@@ -153,9 +161,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text('Profile updated successfully!'),
-            backgroundColor: AppTheme.accentColor,
+            backgroundColor: colors.accentColor,
           ),
         );
         Navigator.pop(context);
@@ -163,7 +171,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(authProvider.lastError ?? 'Failed to update profile'),
-            backgroundColor: AppTheme.errorColor,
+            backgroundColor: colors.errorColor,
           ),
         );
       }
@@ -172,7 +180,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error: $e'),
-            backgroundColor: AppTheme.errorColor,
+            backgroundColor: colors.errorColor,
           ),
         );
       }
@@ -183,7 +191,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
-  Widget _buildProfilePicture() {
+  Widget _buildProfilePicture(ThemeColors colors) {
     return Center(
       child: Stack(
         children: [
@@ -192,9 +200,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             height: 120,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: AppTheme.primaryGradient,
+              gradient: colors.primaryGradient,
               border: Border.all(
-                color: AppTheme.primaryColor,
+                color: colors.primaryColor,
                 width: 3,
               ),
             ),
@@ -211,14 +219,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           imageUrl: _profilePictureUrl!,
                           fit: BoxFit.cover,
                           placeholder: (context, url) => Container(
-                            color: AppTheme.primaryColor.withOpacity(0.3),
+                            color: colors.primaryColor.withOpacity(0.3),
                             child: const Center(
                               child: CircularProgressIndicator(),
                             ),
                           ),
                           errorWidget: (context, url, error) => Container(
                             decoration: BoxDecoration(
-                              gradient: AppTheme.primaryGradient,
+                              gradient: colors.primaryGradient,
                               shape: BoxShape.circle,
                             ),
                             child: Center(
@@ -227,7 +235,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                     .user?.name
                                     .substring(0, 1)
                                     .toUpperCase() ?? 'U',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: Colors.white,
                                   fontSize: 40,
                                   fontWeight: FontWeight.bold,
@@ -243,7 +251,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                               .user?.name
                               .substring(0, 1)
                               .toUpperCase() ?? 'U',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: Colors.white,
                             fontSize: 40,
                             fontWeight: FontWeight.bold,
@@ -258,10 +266,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: AppTheme.primaryColor,
+                color: colors.primaryColor,
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: AppTheme.backgroundColor,
+                  color: colors.backgroundColor,
                   width: 2,
                 ),
               ),
@@ -291,16 +299,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
+
     return Scaffold(
-      backgroundColor: AppTheme.backgroundColor,
+      backgroundColor: colors.backgroundColor,
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.transparent,
-        title: const Text('Edit Profile'),
+        title: Text('Edit Profile'),
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppTheme.darkGradient,
+        decoration: BoxDecoration(
+          gradient: colors.backgroundGradient,
         ),
         child: Form(
           key: _formKey,
@@ -308,7 +319,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             padding: const EdgeInsets.all(16),
             children: [
               const SizedBox(height: 20),
-              _buildProfilePicture(),
+              _buildProfilePicture(colors),
               const SizedBox(height: 32),
               FadeInWidget(
                 child: FloatingCard(
@@ -321,6 +332,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         controller: _nameController,
                         label: 'Name',
                         icon: Icons.person_outline,
+                        colors: colors,
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
                             return 'Name is required';
@@ -334,6 +346,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         label: 'Email',
                         icon: Icons.email_outlined,
                         keyboardType: TextInputType.emailAddress,
+                        colors: colors,
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
                             return 'Email is required';
@@ -350,6 +363,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         label: 'Phone (Optional)',
                         icon: Icons.phone_outlined,
                         keyboardType: TextInputType.phone,
+                        colors: colors,
                       ),
                     ],
                   ),
@@ -361,7 +375,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   text: 'Save Changes',
                   onPressed: _saving ? null : _saveProfile,
                   isLoading: _saving,
-                  backgroundColor: AppTheme.primaryColor,
+                  backgroundColor: colors.primaryColor,
                 ),
               ),
             ],
@@ -377,33 +391,34 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     required IconData icon,
     TextInputType? keyboardType,
     String? Function(String?)? validator,
+    required ThemeColors colors,
   }) {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
       validator: validator,
-      style: const TextStyle(color: AppTheme.textPrimary),
+      style: TextStyle(color: colors.textPrimary),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: AppTheme.textSecondary),
-        prefixIcon: Icon(icon, color: AppTheme.primaryColor),
+        labelStyle: TextStyle(color: colors.textSecondary),
+        prefixIcon: Icon(icon, color: colors.primaryColor),
         filled: true,
-        fillColor: AppTheme.surfaceColor,
+        fillColor: colors.surfaceColor,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppTheme.borderColor),
+          borderSide: BorderSide(color: colors.borderColor),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppTheme.borderColor),
+          borderSide: BorderSide(color: colors.borderColor),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
+          borderSide: BorderSide(color: colors.primaryColor, width: 2),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppTheme.errorColor),
+          borderSide: BorderSide(color: colors.errorColor),
         ),
       ),
     );

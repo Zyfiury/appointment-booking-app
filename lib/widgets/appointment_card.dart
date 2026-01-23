@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/appointment.dart';
+
 import '../theme/app_theme.dart';
 import '../widgets/fade_in_widget.dart';
 import '../widgets/layered_card.dart';
+import '../providers/theme_provider.dart';
 
 class AppointmentCard extends StatefulWidget {
   final Appointment appointment;
@@ -45,18 +48,18 @@ class _AppointmentCardState extends State<AppointmentCard>
     super.dispose();
   }
 
-  Color _getStatusColor(String status) {
+  Color _getStatusColor(String status, ThemeColors colors) {
     switch (status.toLowerCase()) {
       case 'confirmed':
-        return AppTheme.accentColor;
+        return colors.accentColor;
       case 'pending':
-        return AppTheme.warningColor;
+        return colors.warningColor;
       case 'completed':
-        return AppTheme.primaryColor;
+        return colors.primaryColor;
       case 'cancelled':
-        return AppTheme.errorColor;
+        return colors.errorColor;
       default:
-        return AppTheme.textSecondary;
+        return colors.textSecondary;
     }
   }
 
@@ -77,7 +80,10 @@ class _AppointmentCardState extends State<AppointmentCard>
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = _getStatusColor(widget.appointment.status);
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
+
+    final statusColor = _getStatusColor(widget.appointment.status, colors);
     
     return FadeInWidget(
       duration: Duration(milliseconds: 400 + (widget.index * 100)),
@@ -111,7 +117,7 @@ class _AppointmentCardState extends State<AppointmentCard>
                                 .titleLarge
                                 ?.copyWith(
                                   fontWeight: FontWeight.bold,
-                                  color: AppTheme.textPrimary,
+                                  color: colors.textPrimary,
                                 ),
                           ),
                           const SizedBox(height: 8),
@@ -121,7 +127,7 @@ class _AppointmentCardState extends State<AppointmentCard>
                               vertical: 6,
                             ),
                             decoration: BoxDecoration(
-                              color: AppTheme.surfaceColor,
+                              color: colors.surfaceColor,
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Row(
@@ -130,14 +136,14 @@ class _AppointmentCardState extends State<AppointmentCard>
                                 Icon(
                                   Icons.person_outline,
                                   size: 14,
-                                  color: AppTheme.textSecondary,
+                                  color: colors.textSecondary,
                                 ),
                                 const SizedBox(width: 6),
                                 Text(
                                   widget.appointment.provider.name,
                                   style: TextStyle(
                                     fontSize: 12,
-                                    color: AppTheme.textSecondary,
+                                    color: colors.textSecondary,
                                     fontWeight: FontWeight.w500,
                                   ),
                                 ),
@@ -187,7 +193,7 @@ class _AppointmentCardState extends State<AppointmentCard>
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: AppTheme.surfaceColor,
+                    color: colors.surfaceColor,
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Row(
@@ -195,7 +201,7 @@ class _AppointmentCardState extends State<AppointmentCard>
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          gradient: AppTheme.primaryGradient,
+                          gradient: colors.primaryGradient,
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Icon(
@@ -211,10 +217,10 @@ class _AppointmentCardState extends State<AppointmentCard>
                           children: [
                             Text(
                               widget.appointment.formattedDate,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w600,
-                                color: AppTheme.textPrimary,
+                                color: colors.textPrimary,
                               ),
                             ),
                             const SizedBox(height: 4),
@@ -223,14 +229,14 @@ class _AppointmentCardState extends State<AppointmentCard>
                                 Icon(
                                   Icons.access_time,
                                   size: 14,
-                                  color: AppTheme.textSecondary,
+                                  color: colors.textSecondary,
                                 ),
                                 const SizedBox(width: 6),
                                 Text(
                                   widget.appointment.time,
                                   style: TextStyle(
                                     fontSize: 13,
-                                    color: AppTheme.textSecondary,
+                                    color: colors.textSecondary,
                                   ),
                                 ),
                               ],
@@ -245,12 +251,12 @@ class _AppointmentCardState extends State<AppointmentCard>
                             vertical: 8,
                           ),
                           decoration: BoxDecoration(
-                            gradient: AppTheme.accentGradient,
+                            gradient: colors.accentGradient,
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
                             '\$${widget.appointment.service.price.toStringAsFixed(2)}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
                               fontSize: 14,
@@ -266,10 +272,10 @@ class _AppointmentCardState extends State<AppointmentCard>
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: AppTheme.primaryColor.withOpacity(0.1),
+                      color: colors.primaryColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: AppTheme.primaryColor.withOpacity(0.2),
+                        color: colors.primaryColor.withOpacity(0.2),
                       ),
                     ),
                     child: Row(
@@ -277,7 +283,7 @@ class _AppointmentCardState extends State<AppointmentCard>
                         Icon(
                           Icons.note_outlined,
                           size: 16,
-                          color: AppTheme.primaryColor,
+                          color: colors.primaryColor,
                         ),
                         const SizedBox(width: 8),
                         Expanded(
@@ -285,7 +291,7 @@ class _AppointmentCardState extends State<AppointmentCard>
                             widget.appointment.notes!,
                             style: TextStyle(
                               fontSize: 13,
-                              color: AppTheme.textSecondary,
+                              color: colors.textSecondary,
                             ),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,

@@ -1,7 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../services/service_service.dart';
 import '../../models/service.dart';
 import '../../theme/app_theme.dart';
+import '../../providers/theme_provider.dart';
+import '../../providers/auth_provider.dart';
+import '../../utils/service_categories.dart';
+import '../../utils/validators.dart';
+import '../../widgets/confirmation_dialog.dart';
+import '../../utils/network_utils.dart';
+import '../../widgets/retry_button.dart';
+
 
 class ManageServicesScreen extends StatefulWidget {
   const ManageServicesScreen({super.key});
@@ -25,7 +34,8 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
   final _descriptionController = TextEditingController();
   final _durationController = TextEditingController();
   final _priceController = TextEditingController();
-  final _categoryController = TextEditingController();
+  String? _selectedCategory;
+  final _capacityController = TextEditingController();
 
   @override
   void initState() {
@@ -39,13 +49,24 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
     _descriptionController.dispose();
     _durationController.dispose();
     _priceController.dispose();
-    _categoryController.dispose();
+    _capacityController.dispose();
     super.dispose();
   }
 
   Future<void> _loadServices() async {
     try {
-      final services = await _serviceService.getServices();
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final providerId = authProvider.user?.id;
+      
+      if (providerId == null) {
+        setState(() {
+          _loadingServices = false;
+          _error = 'Provider ID not found';
+        });
+        return;
+      }
+      
+      final services = await _serviceService.getServices(providerId: providerId);
       setState(() {
         _services = services;
         _loadingServices = false;
@@ -67,13 +88,15 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
         _descriptionController.text = service.description;
         _durationController.text = service.duration.toString();
         _priceController.text = service.price.toString();
-        _categoryController.text = service.category;
+        _selectedCategory = service.category;
+        _capacityController.text = service.capacity.toString();
       } else {
         _nameController.clear();
         _descriptionController.clear();
         _durationController.clear();
         _priceController.clear();
-        _categoryController.clear();
+        _selectedCategory = null;
+        _capacityController.text = '1';
       }
       _error = null;
     });
@@ -87,12 +110,15 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
       _descriptionController.clear();
       _durationController.clear();
       _priceController.clear();
-      _categoryController.clear();
+      _selectedCategory = null;
+      _capacityController.text = '1';
       _error = null;
     });
   }
 
   Future<void> _saveService() async {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
     if (!_formKey.currentState!.validate()) return;
 
     setState(() {
@@ -108,7 +134,8 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
           description: _descriptionController.text.trim(),
           duration: int.parse(_durationController.text),
           price: double.parse(_priceController.text),
-          category: _categoryController.text.trim(),
+          category: _selectedCategory ?? 'Other',
+          capacity: int.tryParse(_capacityController.text) ?? 1,
         );
       } else {
         await _serviceService.createService(
@@ -116,7 +143,8 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
           description: _descriptionController.text.trim(),
           duration: int.parse(_durationController.text),
           price: double.parse(_priceController.text),
-          category: _categoryController.text.trim(),
+          category: _selectedCategory ?? 'Other',
+          capacity: int.tryParse(_capacityController.text) ?? 1,
         );
       }
       _closeForm();
@@ -129,7 +157,7 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
                   ? 'Service updated successfully'
                   : 'Service created successfully',
             ),
-            backgroundColor: AppTheme.accentColor,
+            backgroundColor: colors.accentColor,
           ),
         );
       }
@@ -142,27 +170,17 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
   }
 
   Future<void> _deleteService(Service service) async {
-    final confirmed = await showDialog<bool>(
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
+    
+    final confirmed = await ConfirmationDialog.show(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Service'),
-        content: const Text(
-          'Are you sure you want to delete this service?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(
-              foregroundColor: AppTheme.errorColor,
-            ),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+      title: 'Delete Service',
+      message: 'Are you sure you want to delete "${service.name}"? This action cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      confirmColor: colors.errorColor,
+      icon: Icons.delete_outline,
     );
 
     if (confirmed == true) {
@@ -171,9 +189,9 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
         _loadServices();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
+            SnackBar(
               content: Text('Service deleted successfully'),
-              backgroundColor: AppTheme.accentColor,
+              backgroundColor: colors.accentColor,
             ),
           );
         }
@@ -181,8 +199,15 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Failed to delete service: $e'),
-              backgroundColor: AppTheme.errorColor,
+              content: Text(NetworkUtils.getErrorMessage(e)),
+              backgroundColor: colors.errorColor,
+              action: NetworkUtils.isRetryable(e)
+                  ? SnackBarAction(
+                      label: 'Retry',
+                      textColor: Colors.white,
+                      onPressed: () => _deleteService(service),
+                    )
+                  : null,
             ),
           );
         }
@@ -192,6 +217,9 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
+
     if (_showForm) {
       return Scaffold(
         appBar: AppBar(
@@ -208,7 +236,7 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
               children: [
                 TextFormField(
                   controller: _nameController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Service Name',
                     prefixIcon: Icon(Icons.work_outline),
                   ),
@@ -220,16 +248,37 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
                   },
                 ),
                 const SizedBox(height: 20),
-                TextFormField(
-                  controller: _categoryController,
-                  decoration: const InputDecoration(
+                DropdownButtonFormField<String>(
+                  value: _selectedCategory,
+                  decoration: InputDecoration(
                     labelText: 'Category',
-                    hintText: 'e.g., Consultation, Treatment, Checkup',
                     prefixIcon: Icon(Icons.category_outlined),
                   ),
+                  items: ServiceCategories.getAllCategoryNames().map((category) {
+                    final categoryInfo = ServiceCategories.getCategory(category);
+                    return DropdownMenuItem<String>(
+                      value: category,
+                      child: Row(
+                        children: [
+                          Icon(
+                            categoryInfo.icon,
+                            color: categoryInfo.color,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(category),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedCategory = value;
+                    });
+                  },
                   validator: (value) {
                     if (value == null || value.isEmpty) {
-                      return 'Please enter category';
+                      return 'Please select a category';
                     }
                     return null;
                   },
@@ -238,34 +287,21 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
                 TextFormField(
                   controller: _descriptionController,
                   maxLines: 4,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Description',
                     prefixIcon: Icon(Icons.description_outlined),
                   ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter description';
-                    }
-                    return null;
-                  },
+                  validator: (value) => Validators.description(value, minLength: 10, maxLength: 500),
                 ),
                 const SizedBox(height: 20),
                 TextFormField(
                   controller: _durationController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Duration (minutes)',
                     prefixIcon: Icon(Icons.access_time),
                   ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter duration';
-                    }
-                    if (int.tryParse(value) == null || int.parse(value) < 15) {
-                      return 'Duration must be at least 15 minutes';
-                    }
-                    return null;
-                  },
+                  validator: Validators.duration,
                 ),
                 const SizedBox(height: 20),
                 TextFormField(
@@ -273,20 +309,22 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Price (\$)',
                     prefixIcon: Icon(Icons.attach_money),
                   ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter price';
-                    }
-                    if (double.tryParse(value) == null ||
-                        double.parse(value) < 0) {
-                      return 'Please enter a valid price';
-                    }
-                    return null;
-                  },
+                  validator: Validators.price,
+                ),
+                const SizedBox(height: 20),
+                TextFormField(
+                  controller: _capacityController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Capacity (concurrent bookings)',
+                    hintText: '1 = one customer at a time, 10 = group class',
+                    prefixIcon: Icon(Icons.groups),
+                  ),
+                  validator: Validators.capacity,
                 ),
                 const SizedBox(height: 24),
                 if (_error != null)
@@ -294,13 +332,13 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
                     padding: const EdgeInsets.only(bottom: 16),
                     child: Text(
                       _error!,
-                      style: const TextStyle(color: AppTheme.errorColor),
+                      style: TextStyle(color: colors.errorColor),
                     ),
                   ),
                 ElevatedButton(
                   onPressed: _loading ? null : _saveService,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
+                    backgroundColor: colors.primaryColor,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
@@ -319,7 +357,7 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
                 const SizedBox(height: 12),
                 OutlinedButton(
                   onPressed: _loading ? null : _closeForm,
-                  child: const Text('Cancel'),
+                  child: Text('Cancel'),
                 ),
               ],
             ),
@@ -330,7 +368,7 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Manage Services'),
+        title: Text('Manage Services'),
       ),
       body: _loadingServices
           ? const Center(child: CircularProgressIndicator())
@@ -341,9 +379,9 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
                   child: ElevatedButton.icon(
                     onPressed: () => _openForm(),
                     icon: const Icon(Icons.add),
-                    label: const Text('Add New Service'),
+                    label: Text('Add New Service'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryColor,
+                      backgroundColor: colors.primaryColor,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
@@ -358,7 +396,7 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
                               Icon(
                                 Icons.work_outline,
                                 size: 64,
-                                color: AppTheme.textSecondary,
+                                color: colors.textSecondary,
                               ),
                               const SizedBox(height: 16),
                               Text(
@@ -404,7 +442,7 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
                                             vertical: 6,
                                           ),
                                           decoration: BoxDecoration(
-                                            color: AppTheme.primaryColor
+                                            color: colors.primaryColor
                                                 .withOpacity(0.1),
                                             borderRadius:
                                                 BorderRadius.circular(20),
@@ -412,7 +450,7 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
                                           child: Text(
                                             service.category,
                                             style: TextStyle(
-                                              color: AppTheme.primaryColor,
+                                              color: colors.primaryColor,
                                               fontSize: 12,
                                               fontWeight: FontWeight.bold,
                                             ),
@@ -433,7 +471,7 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
                                         Icon(
                                           Icons.access_time,
                                           size: 16,
-                                          color: AppTheme.textSecondary,
+                                          color: colors.textSecondary,
                                         ),
                                         const SizedBox(width: 8),
                                         Text(
@@ -446,7 +484,7 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
                                         Icon(
                                           Icons.attach_money,
                                           size: 16,
-                                          color: AppTheme.textSecondary,
+                                          color: colors.textSecondary,
                                         ),
                                         const SizedBox(width: 8),
                                         Text(
@@ -454,6 +492,21 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
                                           style: Theme.of(context)
                                               .textTheme
                                               .bodyMedium,
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.groups,
+                                          size: 16,
+                                          color: colors.textSecondary,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'Capacity: ${service.capacity}',
+                                          style: Theme.of(context).textTheme.bodyMedium,
                                         ),
                                       ],
                                     ),
@@ -465,7 +518,7 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
                                           onPressed: () => _openForm(
                                             service: service,
                                           ),
-                                          child: const Text('Edit'),
+                                          child: Text('Edit'),
                                         ),
                                         const SizedBox(width: 8),
                                         ElevatedButton(
@@ -473,10 +526,10 @@ class _ManageServicesScreenState extends State<ManageServicesScreen> {
                                               _deleteService(service),
                                           style: ElevatedButton.styleFrom(
                                             backgroundColor:
-                                                AppTheme.errorColor,
+                                                colors.errorColor,
                                             foregroundColor: Colors.white,
                                           ),
-                                          child: const Text('Delete'),
+                                          child: Text('Delete'),
                                         ),
                                       ],
                                     ),

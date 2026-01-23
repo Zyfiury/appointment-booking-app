@@ -9,6 +9,7 @@ class Provider {
   final double? longitude;
   final String? address;
   final double? distance; // in kilometers
+  final String? profilePicture;
 
   Provider({
     required this.id,
@@ -21,6 +22,7 @@ class Provider {
     this.longitude,
     this.address,
     this.distance,
+    this.profilePicture,
   });
 
   factory Provider.fromJson(Map<String, dynamic> json) {
@@ -35,6 +37,7 @@ class Provider {
       longitude: json['longitude'] != null ? (json['longitude'] as num).toDouble() : null,
       address: json['address'],
       distance: json['distance'] != null ? (json['distance'] as num).toDouble() : null,
+      profilePicture: json['profilePicture'] ?? json['profile_picture'],
     );
   }
 
@@ -50,6 +53,7 @@ class Provider {
       'longitude': longitude,
       'address': address,
       'distance': distance,
+      'profilePicture': profilePicture,
     };
   }
 }

@@ -5,6 +5,7 @@ import '../models/user.dart';
 import '../services/auth_service.dart';
 import '../services/api_service.dart';
 import '../services/google_auth_service.dart';
+import '../services/secure_storage_service.dart';
 
 class AuthProvider with ChangeNotifier {
   User? _user;
@@ -28,8 +29,9 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
     
     try {
+      // Use secure storage for token
+      _token = await SecureStorageService.getToken();
       final prefs = await SharedPreferences.getInstance();
-      _token = prefs.getString('token');
       final userJson = prefs.getString('user');
       
       if (_token != null && userJson != null) {
@@ -58,8 +60,9 @@ class AuthProvider with ChangeNotifier {
         _token = result['token'];
         _user = User.fromJson(result['user']);
 
+        // Use secure storage for token
+        await SecureStorageService.saveToken(_token!);
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('token', _token!);
         await prefs.setString('user', json.encode(result['user']));
 
         _loading = false;
@@ -140,8 +143,9 @@ class AuthProvider with ChangeNotifier {
     _user = null;
     _token = null;
     
+    // Clear secure storage
+    await SecureStorageService.deleteToken();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('token');
     await prefs.remove('user');
     
     notifyListeners();
@@ -210,8 +214,9 @@ class AuthProvider with ChangeNotifier {
         _token = result['token'];
         _user = User.fromJson(result['user']);
 
+        // Use secure storage for token
+        await SecureStorageService.saveToken(_token!);
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('token', _token!);
         await prefs.setString('user', json.encode(result['user']));
 
         _loading = false;

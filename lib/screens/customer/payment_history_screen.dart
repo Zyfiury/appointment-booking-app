@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../../models/payment.dart';
 import '../../services/payment_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/layered_card.dart';
 import '../../widgets/fade_in_widget.dart';
 import '../../widgets/shimmer_loading.dart';
+import '../../providers/theme_provider.dart';
+
 
 class PaymentHistoryScreen extends StatefulWidget {
   const PaymentHistoryScreen({super.key});
@@ -42,18 +45,18 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
     }
   }
 
-  Color _getStatusColor(String status) {
+  Color _getStatusColor(String status, ThemeColors colors) {
     switch (status) {
       case 'completed':
-        return AppTheme.accentColor;
+        return colors.accentColor;
       case 'pending':
-        return AppTheme.warningColor;
+        return colors.warningColor;
       case 'failed':
-        return AppTheme.errorColor;
+        return colors.errorColor;
       case 'refunded':
-        return AppTheme.textSecondary;
+        return colors.textSecondary;
       default:
-        return AppTheme.textSecondary;
+        return colors.textSecondary;
     }
   }
 
@@ -74,16 +77,19 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
+
     return Scaffold(
-      backgroundColor: AppTheme.backgroundColor,
+      backgroundColor: colors.backgroundColor,
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.transparent,
-        title: const Text('Payment History'),
+        title: Text('Payment History'),
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppTheme.darkGradient,
+        decoration: BoxDecoration(
+          gradient: colors.backgroundGradient,
         ),
         child: _loading
             ? const ShimmerList(itemCount: 5)
@@ -95,13 +101,13 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
                         Icon(
                           Icons.error_outline,
                           size: 64,
-                          color: AppTheme.errorColor,
+                          color: colors.errorColor,
                         ),
                         const SizedBox(height: 16),
                         Text(
                           _error!,
                           style: TextStyle(
-                            color: AppTheme.textSecondary,
+                            color: colors.textSecondary,
                             fontSize: 16,
                           ),
                           textAlign: TextAlign.center,
@@ -110,9 +116,9 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
                         ElevatedButton(
                           onPressed: _loadPayments,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primaryColor,
+                            backgroundColor: colors.primaryColor,
                           ),
-                          child: const Text('Retry'),
+                          child: Text('Retry'),
                         ),
                       ],
                     ),
@@ -125,13 +131,13 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
                             Icon(
                               Icons.payment_outlined,
                               size: 64,
-                              color: AppTheme.textSecondary,
+                              color: colors.textSecondary,
                             ),
                             const SizedBox(height: 16),
                             Text(
                               'No payments yet',
                               style: TextStyle(
-                                color: AppTheme.textSecondary,
+                                color: colors.textSecondary,
                                 fontSize: 18,
                               ),
                             ),
@@ -139,7 +145,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
                             Text(
                               'Your payment history will appear here',
                               style: TextStyle(
-                                color: AppTheme.textTertiary,
+                                color: colors.textTertiary,
                                 fontSize: 14,
                               ),
                             ),
@@ -148,7 +154,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
                       )
                     : RefreshIndicator(
                         onRefresh: _loadPayments,
-                        color: AppTheme.primaryColor,
+                        color: colors.primaryColor,
                         child: ListView.builder(
                           padding: const EdgeInsets.all(16),
                           itemCount: _payments.length,
@@ -173,10 +179,10 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
                                             children: [
                                               Text(
                                                 '\$${payment.amount.toStringAsFixed(2)}',
-                                                style: const TextStyle(
+                                                style: TextStyle(
                                                   fontSize: 24,
                                                   fontWeight: FontWeight.bold,
-                                                  color: AppTheme.textPrimary,
+                                                  color: colors.textPrimary,
                                                 ),
                                               ),
                                               const SizedBox(height: 4),
@@ -185,7 +191,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
                                                     .format(payment.createdAt),
                                                 style: TextStyle(
                                                   fontSize: 13,
-                                                  color: AppTheme.textSecondary,
+                                                  color: colors.textSecondary,
                                                 ),
                                               ),
                                             ],
@@ -198,12 +204,12 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
                                           ),
                                           decoration: BoxDecoration(
                                             color: _getStatusColor(
-                                                    payment.status)
+                                                    payment.status, colors)
                                                 .withOpacity(0.15),
                                             borderRadius: BorderRadius.circular(20),
                                             border: Border.all(
                                               color: _getStatusColor(
-                                                      payment.status)
+                                                      payment.status, colors)
                                                   .withOpacity(0.3),
                                             ),
                                           ),
@@ -214,7 +220,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
                                                 _getStatusIcon(payment.status),
                                                 size: 14,
                                                 color: _getStatusColor(
-                                                    payment.status),
+                                                    payment.status, colors),
                                               ),
                                               const SizedBox(width: 6),
                                               Text(
@@ -223,7 +229,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
                                                   fontSize: 11,
                                                   fontWeight: FontWeight.w600,
                                                   color: _getStatusColor(
-                                                      payment.status),
+                                                      payment.status, colors),
                                                 ),
                                               ),
                                             ],
@@ -237,28 +243,28 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
                                         Icon(
                                           Icons.credit_card,
                                           size: 16,
-                                          color: AppTheme.textSecondary,
+                                          color: colors.textSecondary,
                                         ),
                                         const SizedBox(width: 8),
                                         Text(
                                           payment.paymentMethod.toUpperCase(),
                                           style: TextStyle(
                                             fontSize: 13,
-                                            color: AppTheme.textSecondary,
+                                            color: colors.textSecondary,
                                           ),
                                         ),
                                         const SizedBox(width: 16),
                                         Icon(
                                           Icons.currency_exchange,
                                           size: 16,
-                                          color: AppTheme.textSecondary,
+                                          color: colors.textSecondary,
                                         ),
                                         const SizedBox(width: 8),
                                         Text(
                                           payment.currency.toUpperCase(),
                                           style: TextStyle(
                                             fontSize: 13,
-                                            color: AppTheme.textSecondary,
+                                            color: colors.textSecondary,
                                           ),
                                         ),
                                       ],
@@ -270,7 +276,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
                                           Icon(
                                             Icons.receipt,
                                             size: 16,
-                                            color: AppTheme.textSecondary,
+                                            color: colors.textSecondary,
                                           ),
                                           const SizedBox(width: 8),
                                           Expanded(
@@ -278,7 +284,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
                                               'Transaction: ${payment.transactionId}',
                                               style: TextStyle(
                                                 fontSize: 12,
-                                                color: AppTheme.textTertiary,
+                                                color: colors.textTertiary,
                                               ),
                                               overflow: TextOverflow.ellipsis,
                                             ),
