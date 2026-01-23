@@ -5,6 +5,7 @@ import { db } from '../data/database';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { authRateLimit } from '../middleware/rateLimit';
 import { validate, schemas } from '../middleware/validation';
+import { sendPasswordResetEmail } from '../utils/email';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
@@ -115,14 +116,22 @@ router.post('/forgot-password', authRateLimit, async (req: Request, res: Respons
       expiresAt: Date.now() + 3600000, // 1 hour
     });
 
-    // In production, send email with reset link
-    // For now, just return the token (in production, send via email)
-    console.log(`Password reset token for ${email}: ${resetToken}`);
-    console.log(`Reset link: https://yourapp.com/reset-password?token=${resetToken}`);
+    // Build reset URL
+    const frontendUrl = process.env.FRONTEND_URL || 'https://yourapp.com';
+    const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
+
+    // Send password reset email
+    const emailSent = await sendPasswordResetEmail(email, resetToken, resetUrl);
+
+    // In development, also log the token for testing
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`Password reset token for ${email}: ${resetToken}`);
+      console.log(`Reset link: ${resetUrl}`);
+    }
 
     res.json({ 
       message: 'If the email exists, a reset link has been sent',
-      // In development, return token. Remove in production!
+      // In development only, return token for testing
       token: process.env.NODE_ENV === 'development' ? resetToken : undefined,
     });
   } catch (error) {

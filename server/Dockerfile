@@ -2,8 +2,9 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files and tsconfig
 COPY package*.json ./
+COPY tsconfig.json ./
 
 # Install all dependencies (skip postinstall script since source isn't copied yet)
 RUN npm install --ignore-scripts
