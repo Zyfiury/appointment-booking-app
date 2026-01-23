@@ -1,6 +1,12 @@
+<<<<<<< HEAD
 # Appointment Booking Application
 
 A professional, full-stack appointment booking application similar to Booksy. This application allows customers to book appointments with service providers (doctors, consultants, etc.) and enables providers to manage their services and appointments.
+=======
+# Appointment Booking Mobile App
+
+A professional Flutter mobile application for booking appointments with service providers. This app allows customers to book appointments and enables providers to manage their services and appointments.
+>>>>>>> 977022b4e2c96e2f5dbd2736064f2ea6e482d209
 
 ## Features
 
@@ -20,6 +26,7 @@ A professional, full-stack appointment booking application similar to Booksy. Th
 
 ## Tech Stack
 
+<<<<<<< HEAD
 ### Backend:
 - Node.js with Express
 - TypeScript
@@ -73,6 +80,107 @@ Frontend will run on http://localhost:3000
 
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:5000
+=======
+- **Flutter** - Cross-platform mobile framework
+- **Dart** - Programming language
+- **Provider** - State management
+- **Dio** - HTTP client for API calls
+- **Shared Preferences** - Local storage
+- **Material Design 3** - Modern UI design
+
+## Prerequisites
+
+- Flutter SDK (3.0.0 or higher)
+- Dart SDK (3.0.0 or higher)
+- Android Studio / VS Code with Flutter extensions
+- Backend server running on `http://localhost:5000`
+
+## Installation & Setup
+
+### Step 1: Install Dependencies
+
+```bash
+cd appointment_booking_app
+flutter pub get
+```
+
+### Step 2: Run the Backend Server
+
+Make sure your backend server is running:
+```bash
+cd ../server
+npm run dev
+```
+
+The server should be running on `http://localhost:5000`
+
+### Step 3: Run the Flutter App
+
+**For Android:**
+```bash
+flutter run
+```
+
+**For iOS (Mac only):**
+```bash
+flutter run
+```
+
+**For Web:**
+```bash
+flutter run -d chrome
+```
+
+**For Windows:**
+```bash
+flutter run -d windows
+```
+
+## API Configuration
+
+The app automatically detects the platform and uses the appropriate base URL:
+- **Android Emulator**: `http://10.0.2.2:5000/api`
+- **iOS Simulator**: `http://localhost:5000/api`
+- **Web**: `http://localhost:5000/api`
+- **Physical Device**: Use your computer's IP address (e.g., `http://192.168.1.100:5000/api`)
+
+To change the API URL, edit `lib/services/api_service.dart`.
+
+## Project Structure
+
+```
+lib/
+├── main.dart                 # App entry point
+├── models/                   # Data models
+│   ├── user.dart
+│   ├── appointment.dart
+│   ├── service.dart
+│   └── provider.dart
+├── services/                 # API services
+│   ├── api_service.dart
+│   ├── auth_service.dart
+│   ├── appointment_service.dart
+│   └── service_service.dart
+├── providers/               # State management
+│   └── auth_provider.dart
+├── screens/                 # UI screens
+│   ├── auth/
+│   │   ├── login_screen.dart
+│   │   └── register_screen.dart
+│   ├── customer/
+│   │   ├── dashboard_screen.dart
+│   │   ├── book_appointment_screen.dart
+│   │   └── my_appointments_screen.dart
+│   └── provider/
+│       ├── provider_dashboard_screen.dart
+│       └── manage_services_screen.dart
+├── widgets/                 # Reusable widgets
+│   ├── appointment_card.dart
+│   └── loading_overlay.dart
+└── theme/                   # App theme
+    └── app_theme.dart
+```
+>>>>>>> 977022b4e2c96e2f5dbd2736064f2ea6e482d209
 
 ## Usage Guide
 
@@ -101,6 +209,7 @@ Frontend will run on http://localhost:3000
    - Mark appointments as completed
    - Cancel appointments if needed
 
+<<<<<<< HEAD
 ## API Endpoints
 
 ### Authentication
@@ -178,6 +287,37 @@ cursor/
 - Advanced search and filtering
 - Real-time notifications
 - Database migration to PostgreSQL/MongoDB
+=======
+## Building for Production
+
+### Android APK:
+```bash
+flutter build apk --release
+```
+
+### Android App Bundle:
+```bash
+flutter build appbundle --release
+```
+
+### iOS:
+```bash
+flutter build ios --release
+```
+
+## Troubleshooting
+
+### API Connection Issues
+
+If you're running on a physical device:
+1. Make sure your device and computer are on the same network
+2. Find your computer's IP address
+3. Update `baseUrl` in `lib/services/api_service.dart` to use your IP
+
+### Android Emulator Issues
+
+The app uses `10.0.2.2` for Android emulator, which is the special IP that maps to `localhost` on your host machine.
+>>>>>>> 977022b4e2c96e2f5dbd2736064f2ea6e482d209
 
 ## License
 

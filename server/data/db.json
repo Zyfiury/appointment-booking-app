@@ -1,0 +1,99 @@
+{
+  "users": [
+    {
+      "email": "omar.zakyy2005@gmail.com",
+      "password": "$2a$10$5AXX.dYToLz9/VOMAeK7uuiG7skWdkHR33AU.YhO9yQ0oB2RaotE.",
+      "name": "Omar Zakhama",
+      "role": "customer",
+      "phone": "07943847526",
+      "id": "1768223816429",
+      "createdAt": "2026-01-12T13:16:56.429Z"
+    },
+    {
+      "email": "Omar@gmail.com",
+      "password": "$2a$10$AJzovGampA9Iu7/v49QdRu7ySlOtvy05uHLhsyk5aojoHjzh3Zi82",
+      "name": "Omar",
+      "role": "customer",
+      "phone": null,
+      "id": "1768225987455",
+      "createdAt": "2026-01-12T13:53:07.455Z"
+    },
+    {
+      "email": "omar@gmail.com",
+      "password": "$2a$10$JlM2TDPPaFiFRqWVotBkDOobM7WxM8yxsYt0QZS1yLXkAmTAxqGyC",
+      "name": "omar",
+      "role": "customer",
+      "phone": null,
+      "id": "1768226426000",
+      "createdAt": "2026-01-12T14:00:26.000Z"
+    },
+    {
+      "email": "len@gmail.com",
+      "password": "$2a$10$4BFDCzQignoCN49XDPNR4uSBDUTHQySQ5ZF1c7dja2CJ6y8xe3V1q",
+      "name": "len",
+      "role": "provider",
+      "phone": null,
+      "latitude": 51.5074,
+      "longitude": -0.1278,
+      "address": "123 Main Street, London, UK",
+      "id": "1768226790044",
+      "createdAt": "2026-01-12T14:06:30.044Z"
+    },
+    {
+      "email": "figi@gmail.com",
+      "password": "$2a$10$S2IYeUmw3hTTSKdQYnc2weluN5Xn79om475SXfcNpOupVtLyXrvXW",
+      "name": "figi",
+      "role": "provider",
+      "phone": null,
+      "latitude": 51.5155,
+      "longitude": -0.0922,
+      "address": "456 Business Avenue, London, UK",
+      "id": "1768228195806",
+      "createdAt": "2026-01-12T14:29:55.806Z"
+    }
+  ],
+  "services": [
+    {
+      "providerId": "1768226790044",
+      "name": "lem",
+      "description": "sdefcsdf",
+      "duration": 30,
+      "price": 30,
+      "category": "consultation",
+      "id": "1768226821876"
+    },
+    {
+      "providerId": "1768228195806",
+      "name": "energy",
+      "description": "vcSDF",
+      "duration": 40,
+      "price": 200,
+      "category": "treatment",
+      "id": "1768228225045"
+    },
+    {
+      "providerId": "1768228195806",
+      "name": "lerry",
+      "description": "fSDFSDF",
+      "duration": 20,
+      "price": 400,
+      "category": "SEFG",
+      "id": "1768236599019"
+    }
+  ],
+  "appointments": [
+    {
+      "customerId": "1768226426000",
+      "providerId": "1768226790044",
+      "serviceId": "1768226821876",
+      "date": "2026-01-15",
+      "time": "14:28",
+      "status": "cancelled",
+      "notes": "zccfbghzb",
+      "id": "1768228108696",
+      "createdAt": "2026-01-12T14:28:28.696Z"
+    }
+  ],
+  "payments": [],
+  "reviews": []
+}
