@@ -91,3 +91,16 @@ export const generalRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // 100 requests per 15 minutes
 });
+
+export const searchRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 50,
+  message: 'Too many search requests, please try again later',
+});
+
+export const paymentRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: 'Too many payment requests, please try again later',
+  keyGenerator: (req) => (req as any).userId ?? req.ip ?? 'unknown',
+});

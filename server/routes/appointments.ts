@@ -4,6 +4,8 @@ import { db } from '../data/database';
 import { validate, schemas } from '../middleware/validation';
 import { paginate, parsePagination } from '../utils/pagination';
 import { calculateCancellationFee } from '../utils/cancellation';
+import { getIdempotencyKey, getIdempotencyResult, setIdempotencyResult } from '../utils/idempotency';
+import { auditLog } from '../utils/audit';
 
 const router = express.Router();
 
@@ -166,7 +168,11 @@ router.get('/available-slots', async (req: express.Request, res: Response) => {
         atCapacity = concurrentAppointments.length >= serviceCapacity;
       }
 
-      if (!conflictsWithBreak && !conflictsWithAppointment && !atCapacity) {
+      // Exclude slots with active reservation holds (prevents double-booking)
+      const activeHolds = db.getReservationHolds(providerId as string, dateStr, slotTime);
+      const hasHold = activeHolds.length > 0;
+
+      if (!conflictsWithBreak && !conflictsWithAppointment && !atCapacity && !hasHold) {
         availableSlots.push(slotTime);
       }
 
@@ -292,7 +298,13 @@ router.delete('/hold/:id', authenticate, (req: AuthRequest, res: Response) => {
 });
 
 router.post('/', authenticate, validate(schemas.createAppointment), (req: AuthRequest, res: Response) => {
+  const idemKey = getIdempotencyKey(req);
   try {
+    if (idemKey) {
+      const cached = getIdempotencyResult(idemKey);
+      if (cached) return res.status(cached.status).json(cached.body);
+    }
+
     const { providerId, serviceId, date, time, notes, holdId } = req.body;
 
     if (req.userRole !== 'customer') {
@@ -372,15 +384,25 @@ router.post('/', authenticate, validate(schemas.createAppointment), (req: AuthRe
       notes,
     });
 
+    auditLog({
+      action: 'appointment.created',
+      entity: 'appointment',
+      entityId: appointment.id,
+      userId: req.userId!,
+      meta: { providerId, serviceId, date, time },
+    });
+
     const customer = db.getUserById(appointment.customerId);
     const provider = db.getUserById(appointment.providerId);
 
-    res.status(201).json({
+    const payload = {
       ...appointment,
       customer: customer ? { id: customer.id, name: customer.name, email: customer.email } : null,
       provider: provider ? { id: provider.id, name: provider.name, email: provider.email } : null,
       service,
-    });
+    };
+    if (idemKey) setIdempotencyResult(idemKey, 201, payload);
+    res.status(201).json(payload);
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
   }
@@ -419,6 +441,13 @@ router.patch('/:id', authenticate, validate(schemas.updateAppointment), (req: Au
 
     if (status && ['pending', 'confirmed', 'cancelled', 'completed'].includes(status)) {
       updates.status = status;
+      auditLog({
+        action: `appointment.${status}` as 'appointment.confirmed' | 'appointment.cancelled' | 'appointment.completed',
+        entity: 'appointment',
+        entityId: appointment.id,
+        userId: req.userId!,
+        meta: { previousStatus: appointment.status, newStatus: status },
+      });
     }
     if (notes !== undefined) {
       updates.notes = notes;
@@ -476,6 +505,18 @@ router.delete('/:id', authenticate, (req: AuthRequest, res: Response) => {
     }
 
     db.updateAppointment(req.params.id, { status: 'cancelled' });
+
+    auditLog({
+      action: 'appointment.cancelled',
+      entity: 'appointment',
+      entityId: appointment.id,
+      userId: req.userId!,
+      meta: {
+        cancellationFee: cancellation.cancellationFee,
+        refundAmount: cancellation.refundAmount,
+        canCancelFree: cancellation.canCancelFree,
+      },
+    });
     
     res.json({ 
       message: 'Appointment cancelled',

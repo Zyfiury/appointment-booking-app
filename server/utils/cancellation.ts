@@ -1,5 +1,13 @@
 import { Appointment, Service, User, CancellationPolicy, Payment } from '../data/database';
 
+/** Platform default when provider/service have no policy. */
+export const PLATFORM_DEFAULT_POLICY: CancellationPolicy = {
+  freeCancelHours: 24,
+  lateCancelFee: 25,
+  noShowFee: 50,
+  requireDeposit: false,
+};
+
 export interface CancellationResult {
   cancellationFee: number;
   refundAmount: number;
@@ -13,18 +21,8 @@ export function calculateCancellationFee(
   provider: User | null,
   payment: Payment | null
 ): CancellationResult {
-  const policy: CancellationPolicy | undefined = 
-    service?.cancellationPolicy || provider?.cancellationPolicy;
-
-  if (!policy) {
-    // No policy = free cancellation
-    return {
-      cancellationFee: 0,
-      refundAmount: payment?.amount || 0,
-      canCancelFree: true,
-      reason: 'No cancellation policy',
-    };
-  }
+  const policy: CancellationPolicy =
+    service?.cancellationPolicy || provider?.cancellationPolicy || PLATFORM_DEFAULT_POLICY;
 
   const appointmentDateTime = new Date(`${appointment.date}T${appointment.time}`);
   const now = new Date();

@@ -1,6 +1,7 @@
 import express, { Response } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { db } from '../data/database';
+import { createReport } from '../utils/reports';
 
 const router = express.Router();
 
@@ -57,6 +58,19 @@ router.post('/', authenticate, (req: AuthRequest, res: Response) => {
     });
 
     res.json(image);
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Report provider image (flag for moderation)
+router.post('/:id/report', authenticate, (req: AuthRequest, res: Response) => {
+  try {
+    const image = db.getProviderImageById(req.params.id);
+    if (!image) return res.status(404).json({ error: 'Image not found' });
+    const { reason } = req.body || {};
+    createReport('provider_image', image.id, req.userId!, reason);
+    res.status(202).json({ message: 'Report submitted. Thank you.' });
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
   }

@@ -3,6 +3,7 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 import { db } from '../data/database';
 import { v4 as uuidv4 } from 'uuid';
 import { validate, schemas } from '../middleware/validation';
+import { createReport } from '../utils/reports';
 
 const router = express.Router();
 
@@ -74,6 +75,19 @@ router.post('/', authenticate, validate(schemas.createReview), (req: AuthRequest
       ...review,
       customerName: customer?.name || 'Anonymous',
     });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Report review (flag for moderation)
+router.post('/:id/report', authenticate, (req: AuthRequest, res: Response) => {
+  try {
+    const review = db.getReviewById(req.params.id);
+    if (!review) return res.status(404).json({ error: 'Review not found' });
+    const { reason } = req.body || {};
+    createReport('review', review.id, req.userId!, reason);
+    res.status(202).json({ message: 'Report submitted. Thank you.' });
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
   }

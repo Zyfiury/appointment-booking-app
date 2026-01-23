@@ -3,6 +3,9 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 import { db } from '../data/database';
 import { v4 as uuidv4 } from 'uuid';
 import Stripe from 'stripe';
+import { auditLog } from '../utils/audit';
+import { getIdempotencyKey, getIdempotencyResult, setIdempotencyResult } from '../utils/idempotency';
+import { paymentRateLimit } from '../middleware/rateLimit';
 
 const router = express.Router();
 const stripe = process.env.STRIPE_SECRET_KEY 
@@ -81,6 +84,13 @@ function handlePaymentSucceeded(paymentIntent: any) {
     if (appointment && appointment.status === 'pending') {
       db.updateAppointment(appointment.id, { status: 'confirmed' });
     }
+    auditLog({
+      action: 'payment.confirmed',
+      entity: 'payment',
+      entityId: payment.id,
+      userId: appointment?.customerId,
+      meta: { paymentIntentId: paymentIntent.id, appointmentId: payment.appointmentId },
+    });
   }
 }
 
@@ -90,11 +100,16 @@ function handlePaymentFailed(paymentIntent: any) {
   
   if (payment) {
     db.updatePayment(payment.id, { status: 'failed' });
-    
-    // Release any reservation hold
     const appointment = db.getAppointmentById(payment.appointmentId);
+    auditLog({
+      action: 'payment.failed',
+      entity: 'payment',
+      entityId: payment.id,
+      userId: appointment?.customerId,
+      meta: { paymentIntentId: paymentIntent.id },
+    });
+    // Release any reservation hold
     if (appointment) {
-      // Find and release hold for this appointment
       const holds = db.getReservationHolds(appointment.providerId, appointment.date, appointment.time);
       holds.forEach(hold => {
         if (hold.customerId === appointment.customerId) {
@@ -111,12 +126,26 @@ function handleRefund(charge: any) {
   
   if (payment) {
     db.updatePayment(payment.id, { status: 'refunded' });
+    const appointment = db.getAppointmentById(payment.appointmentId);
+    auditLog({
+      action: 'payment.refunded',
+      entity: 'payment',
+      entityId: payment.id,
+      userId: appointment?.customerId,
+      meta: { chargeId: charge.id },
+    });
   }
 }
 
-// Create payment intent (Stripe)
-router.post('/create-intent', authenticate, async (req: AuthRequest, res: Response) => {
+// Create payment intent (Stripe). Idempotency-Key supported to avoid duplicate charges.
+router.post('/create-intent', authenticate, paymentRateLimit, async (req: AuthRequest, res: Response) => {
   try {
+    const idemKey = getIdempotencyKey(req);
+    if (idemKey) {
+      const cached = getIdempotencyResult(idemKey);
+      if (cached) return res.status(cached.status).json(cached.body);
+    }
+
     const { appointmentId, amount, currency = 'USD' } = req.body;
 
     if (!appointmentId || !amount) {
@@ -128,29 +157,45 @@ router.post('/create-intent', authenticate, async (req: AuthRequest, res: Respon
       return res.status(404).json({ error: 'Appointment not found' });
     }
 
-    // In production, integrate with Stripe API here
-    // For now, return a mock payment intent
-    const paymentIntent = {
-      id: `pi_${uuidv4()}`,
-      clientSecret: `pi_${uuidv4()}_secret_${uuidv4()}`,
-      amount: amount * 100, // Convert to cents
-      currency: currency.toLowerCase(),
-    };
+    if (appointment.customerId !== req.userId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
 
-    // Create payment record with payment intent ID
+    let id: string;
+    let clientSecret: string;
+    let amountCents: number;
+    let currencyStr: string;
+
+    if (stripe) {
+      const pi = await stripe.paymentIntents.create({
+        amount: Math.round(amount * 100),
+        currency: (currency as string).toLowerCase(),
+        metadata: { appointmentId },
+        automatic_payment_methods: { enabled: true },
+      });
+      id = pi.id;
+      clientSecret = pi.client_secret ?? '';
+      amountCents = pi.amount;
+      currencyStr = pi.currency;
+    } else {
+      id = `pi_mock_${uuidv4()}`;
+      clientSecret = `pi_mock_${uuidv4()}_secret_${uuidv4()}`;
+      amountCents = amount * 100;
+      currencyStr = (currency as string).toLowerCase();
+    }
+
     const payment = db.createPayment({
       appointmentId,
       amount,
       currency,
       status: 'pending',
       paymentMethod: 'card',
-      transactionId: paymentIntent.id, // Store Stripe payment intent ID
+      transactionId: id,
     });
 
-    res.json({
-      ...paymentIntent,
-      paymentId: payment.id,
-    });
+    const payload = { id, clientSecret, amount: amountCents, currency: currencyStr, paymentId: payment.id };
+    if (idemKey) setIdempotencyResult(idemKey, 200, payload);
+    res.json(payload);
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
   }

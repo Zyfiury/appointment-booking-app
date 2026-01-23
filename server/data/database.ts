@@ -474,6 +474,10 @@ export const db = {
       .filter(img => img.providerId === providerId)
       .sort((a, b) => a.order - b.order);
   },
+  getProviderImageById: (id: string): ProviderImage | undefined => {
+    const dbData = loadDatabase();
+    return dbData.providerImages.find(img => img.id === id);
+  },
   addProviderImage: (image: Omit<ProviderImage, 'id' | 'createdAt'>): ProviderImage => {
     const dbData = loadDatabase();
     const newImage: ProviderImage = {

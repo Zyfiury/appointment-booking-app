@@ -1,6 +1,8 @@
 import express, { Response } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { db } from '../data/database';
+import { searchRateLimit } from '../middleware/rateLimit';
+import { isOnboardingComplete } from '../utils/onboarding';
 
 const router = express.Router();
 
@@ -19,7 +21,8 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 
 router.get('/providers', (req, res: Response) => {
   try {
-    const providers = db.getUsers().filter(u => u.role === 'provider');
+    const providers = db.getUsers()
+      .filter(u => u.role === 'provider' && isOnboardingComplete(u.id));
     const reviews = db.getReviews();
     
     res.json(providers.map(p => {
@@ -46,9 +49,10 @@ router.get('/providers', (req, res: Response) => {
   }
 });
 
-router.get('/providers/search', (req, res: Response) => {
+router.get('/providers/search', searchRateLimit, (req, res: Response) => {
   try {
-    let providers = db.getUsers().filter(u => u.role === 'provider');
+    let providers = db.getUsers()
+      .filter(u => u.role === 'provider' && isOnboardingComplete(u.id));
     const reviews = db.getReviews();
     const services = db.getServices();
     const { q, category, subcategory, minPrice, maxPrice, minRating, latitude, longitude, radius, sortBy, hasService } = req.query;

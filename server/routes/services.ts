@@ -5,6 +5,8 @@ import { validate, validateQuery, schemas } from '../middleware/validation';
 import { searchServices } from '../utils/search';
 import { paginate, parsePagination, PaginatedResponse } from '../utils/pagination';
 import { Service } from '../data/database';
+import { searchRateLimit } from '../middleware/rateLimit';
+import { isValidCategory, isValidSubcategory } from '../utils/categories';
 
 const router = express.Router();
 
@@ -28,7 +30,7 @@ router.get('/categories', (req, res: Response) => {
   }
 });
 
-router.get('/search', validateQuery(schemas.searchQuery), (req, res: Response) => {
+router.get('/search', searchRateLimit, validateQuery(schemas.searchQuery), (req, res: Response) => {
   try {
     const allServices = db.getServices();
     const { q, category, subcategory, minPrice, maxPrice, providerId, isActive } = req.query;
@@ -75,6 +77,21 @@ router.post('/', authenticate, validate(schemas.createService), (req: AuthReques
 
     const { name, description, duration, price, category, subcategory, tags, capacity } = req.body;
 
+    // Validate category
+    if (!isValidCategory(category)) {
+      return res.status(400).json({
+        error: 'Invalid category',
+        validCategories: ['Barber', 'Hair', 'Beauty', 'Massage', 'Fitness', 'Dental', 'Therapy', 'Medical', 'Home Services', 'Other'],
+      });
+    }
+
+    // Validate subcategory if provided
+    if (subcategory && !isValidSubcategory(category, subcategory)) {
+      return res.status(400).json({
+        error: `Invalid subcategory for category "${category}"`,
+      });
+    }
+
     const service = db.createService({
       providerId: req.userId!,
       name,
@@ -111,6 +128,22 @@ router.patch('/:id', authenticate, validate(schemas.updateService), (req: AuthRe
     }
 
     const { name, description, duration, price, category, subcategory, tags, capacity, isActive } = req.body;
+    
+    // Validate category if being updated
+    if (category && !isValidCategory(category)) {
+      return res.status(400).json({
+        error: 'Invalid category',
+        validCategories: ['Barber', 'Hair', 'Beauty', 'Massage', 'Fitness', 'Dental', 'Therapy', 'Medical', 'Home Services', 'Other'],
+      });
+    }
+
+    // Validate subcategory if provided
+    if (subcategory && category && !isValidSubcategory(category, subcategory)) {
+      return res.status(400).json({
+        error: `Invalid subcategory for category "${category}"`,
+      });
+    }
+
     const updates: any = {};
     if (name) updates.name = name;
     if (description) updates.description = description;

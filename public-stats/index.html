@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Bookly Platform Statistics - Real-time data about the Bookly appointment booking platform">
+    <title>Bookly - Platform Statistics</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+        
+        h1 {
+            color: #333;
+            font-size: 42px;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+        
+        .subtitle {
+            color: #666;
+            font-size: 18px;
+            margin-bottom: 20px;
+        }
+        
+        .badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 24px;
+            margin-bottom: 50px;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 32px 24px;
+            border-radius: 16px;
+            text-align: center;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
+        }
+        
+        .stat-value {
+            font-size: 48px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            line-height: 1;
+        }
+        
+        .stat-label {
+            font-size: 14px;
+            opacity: 0.95;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .categories-section {
+            margin-top: 50px;
+            padding-top: 40px;
+            border-top: 2px solid #f0f0f0;
+        }
+        
+        .categories-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+        
+        .categories-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+        }
+        
+        .category-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            border: 2px solid #e9ecef;
+            transition: all 0.3s ease;
+        }
+        
+        .category-card:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+        }
+        
+        .category-name {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        
+        .category-count {
+            font-size: 24px;
+            font-weight: 700;
+            color: #667eea;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 80px 20px;
+            color: #666;
+            font-size: 18px;
+        }
+        
+        .loading::after {
+            content: '...';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+        
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+        
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 24px;
+            border-radius: 12px;
+            text-align: center;
+            border: 2px solid #fcc;
+        }
+        
+        .error-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+        
+        .last-updated {
+            text-align: center;
+            color: #999;
+            font-size: 14px;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #f0f0f0;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 2px solid #f0f0f0;
+        }
+        
+        .footer-text {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .footer-link {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        
+        .footer-link:hover {
+            text-decoration: underline;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 24px;
+            }
+            
+            h1 {
+                font-size: 32px;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+            
+            .stat-value {
+                font-size: 36px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Bookly Platform Statistics</h1>
+            <p class="subtitle">Real-time data about the Bookly appointment booking platform</p>
+            <span class="badge">Live Data</span>
+        </div>
+        
+        <div id="loading" class="loading">Loading statistics</div>
+        <div id="error" class="error" style="display: none;">
+            <div class="error-icon">⚠️</div>
+            <div id="errorMessage"></div>
+            <button onclick="loadStats()" style="margin-top: 16px; padding: 12px 24px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 600;">
+                Retry
+            </button>
+        </div>
+        
+        <div id="stats" style="display: none;">
+            <div class="stats-grid" id="statsGrid"></div>
+            
+            <div class="categories-section" id="categoriesSection" style="display: none;">
+                <h2 class="categories-title">Top Service Categories</h2>
+                <div class="categories-grid" id="categoriesGrid"></div>
+            </div>
+            
+            <div class="last-updated" id="lastUpdated"></div>
+            
+            <div class="footer">
+                <p class="footer-text">
+                    Powered by <a href="#" class="footer-link">Bookly</a> • 
+                    <a href="#" class="footer-link">Book an Appointment</a>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'https://accurate-solace-app22.up.railway.app/api/stats/public';
+        
+        async function loadStats() {
+            const loadingEl = document.getElementById('loading');
+            const errorEl = document.getElementById('error');
+            const statsEl = document.getElementById('stats');
+            
+            // Show loading, hide others
+            loadingEl.style.display = 'block';
+            errorEl.style.display = 'none';
+            statsEl.style.display = 'none';
+            
+            try {
+                const response = await fetch(API_URL);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                displayStats(data);
+            } catch (error) {
+                console.error('Failed to load stats:', error);
+                loadingEl.style.display = 'none';
+                errorEl.style.display = 'block';
+                document.getElementById('errorMessage').textContent = 
+                    'Failed to load statistics. Please try again later.';
+            }
+        }
+
+        function displayStats(data) {
+            const stats = [
+                { 
+                    label: 'Service Providers', 
+                    value: formatNumber(data.platform.totalProviders),
+                    icon: '👥'
+                },
+                { 
+                    label: 'Services Available', 
+                    value: formatNumber(data.platform.totalServices),
+                    icon: '✨'
+                },
+                { 
+                    label: 'Appointments Booked', 
+                    value: formatNumber(data.platform.totalAppointments),
+                    icon: '📅'
+                },
+                { 
+                    label: 'Customer Reviews', 
+                    value: formatNumber(data.platform.totalReviews),
+                    icon: '⭐'
+                },
+                { 
+                    label: 'Average Rating', 
+                    value: data.platform.averageRating.toFixed(1) + '/5',
+                    icon: '🌟'
+                },
+            ];
+
+            // Add geographic coverage if available
+            if (data.geographicCoverage && data.geographicCoverage.cities > 0) {
+                stats.push({
+                    label: 'Cities Covered',
+                    value: formatNumber(data.geographicCoverage.cities),
+                    icon: '🌍'
+                });
+            }
+
+            const grid = document.getElementById('statsGrid');
+            grid.innerHTML = stats.map(stat => `
+                <div class="stat-card">
+                    <div class="stat-value">${stat.value}</div>
+                    <div class="stat-label">${stat.label}</div>
+                </div>
+            `).join('');
+
+            // Display categories if available
+            if (data.categories && data.categories.length > 0) {
+                const categoriesSection = document.getElementById('categoriesSection');
+                const categoriesGrid = document.getElementById('categoriesGrid');
+                
+                categoriesGrid.innerHTML = data.categories.map(cat => `
+                    <div class="category-card">
+                        <div class="category-name">${cat.category}</div>
+                        <div class="category-count">${formatNumber(cat.count)}</div>
+                    </div>
+                `).join('');
+                
+                categoriesSection.style.display = 'block';
+            }
+
+            // Update last updated time
+            const lastUpdated = new Date(data.lastUpdated);
+            document.getElementById('lastUpdated').textContent = 
+                `Last updated: ${lastUpdated.toLocaleString()}`;
+
+            // Hide loading, show stats
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('stats').style.display = 'block';
+        }
+
+        function formatNumber(num) {
+            if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M+';
+            if (num >= 1000) return (num / 1000).toFixed(1) + 'K+';
+            return num.toLocaleString();
+        }
+
+        // Load stats on page load
+        loadStats();
+        
+        // Refresh every 5 minutes
+        setInterval(loadStats, 5 * 60 * 1000);
+    </script>
+</body>
+</html>
