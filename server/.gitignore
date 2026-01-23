@@ -11,15 +11,7 @@ dist/
 .env
 .env.local
 .env.production
-<<<<<<< HEAD
 *.env
-
-# PM2
-.pm2
-logs/
-*.log
-=======
->>>>>>> 977022b4e2c96e2f5dbd2736064f2ea6e482d209
 
 # Logs
 *.log

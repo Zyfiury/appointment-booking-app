@@ -3,16 +3,12 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { db } from '../data/database';
 import { authenticate, AuthRequest } from '../middleware/auth';
-<<<<<<< HEAD
 import { authRateLimit } from '../middleware/rateLimit';
 import { validate, schemas } from '../middleware/validation';
-=======
->>>>>>> 977022b4e2c96e2f5dbd2736064f2ea6e482d209
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
-<<<<<<< HEAD
 // Store for password reset tokens (in production, use Redis or database)
 const passwordResetTokens = new Map<string, { userId: string; expiresAt: number }>();
 
@@ -21,31 +17,12 @@ router.post('/register', validate(schemas.register), async (req: Request, res: R
     const { email, password, name, role, phone } = req.body;
 
     const existingUser = db.getUserByEmail(email);
-=======
-router.post('/register', async (req: Request, res: Response) => {
-  try {
-    const { email, password, name, role, phone } = req.body;
-
-    if (!email || !password || !name || !role) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    if (role !== 'customer' && role !== 'provider') {
-      return res.status(400).json({ error: 'Invalid role' });
-    }
-
-    const existingUser = await db.getUserByEmail(email);
->>>>>>> 977022b4e2c96e2f5dbd2736064f2ea6e482d209
     if (existingUser) {
       return res.status(400).json({ error: 'User already exists' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-<<<<<<< HEAD
     const user = db.createUser({
-=======
-    const user = await db.createUser({
->>>>>>> 977022b4e2c96e2f5dbd2736064f2ea6e482d209
       email,
       password: hashedPassword,
       name,
@@ -67,10 +44,7 @@ router.post('/register', async (req: Request, res: Response) => {
         name: user.name,
         role: user.role,
         phone: user.phone,
-<<<<<<< HEAD
         profilePicture: user.profilePicture,
-=======
->>>>>>> 977022b4e2c96e2f5dbd2736064f2ea6e482d209
       },
     });
   } catch (error) {
@@ -78,23 +52,11 @@ router.post('/register', async (req: Request, res: Response) => {
   }
 });
 
-<<<<<<< HEAD
 router.post('/login', authRateLimit, validate(schemas.login), async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
 
     const user = db.getUserByEmail(email);
-=======
-router.post('/login', async (req: Request, res: Response) => {
-  try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password required' });
-    }
-
-    const user = await db.getUserByEmail(email);
->>>>>>> 977022b4e2c96e2f5dbd2736064f2ea6e482d209
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -118,10 +80,7 @@ router.post('/login', async (req: Request, res: Response) => {
         name: user.name,
         role: user.role,
         phone: user.phone,
-<<<<<<< HEAD
         profilePicture: user.profilePicture,
-=======
->>>>>>> 977022b4e2c96e2f5dbd2736064f2ea6e482d209
       },
     });
   } catch (error) {
@@ -129,21 +88,14 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 });
 
-<<<<<<< HEAD
 router.post('/forgot-password', authRateLimit, async (req: Request, res: Response) => {
   try {
     const { email } = req.body;
-=======
-router.post('/google', async (req: Request, res: Response) => {
-  try {
-    const { idToken, accessToken, email, name, photoUrl } = req.body;
->>>>>>> 977022b4e2c96e2f5dbd2736064f2ea6e482d209
 
     if (!email) {
       return res.status(400).json({ error: 'Email is required' });
     }
 
-<<<<<<< HEAD
     const user = db.getUserByEmail(email);
     if (!user) {
       // Don't reveal if user exists for security
@@ -255,31 +207,6 @@ router.post('/google', async (req: Request, res: Response) => {
       return res.status(500).json({ error: 'Failed to load user after Google sign-in' });
     }
 
-=======
-    // Check if user exists
-    let user = await db.getUserByEmail(email);
-
-    if (!user) {
-      // Create new user from Google account
-      // Default role to 'customer', can be changed later
-      user = await db.createUser({
-        email,
-        password: '', // Google users don't have a password
-        name: name || 'Google User',
-        role: 'customer', // Default role
-        phone: undefined,
-        profilePicture: photoUrl || undefined,
-      });
-    } else {
-      // Update profile picture if provided and different
-      if (photoUrl && user.profilePicture !== photoUrl) {
-        // Note: You might want to add an updateProfilePicture method to db
-        // For now, we'll just use the existing user
-      }
-    }
-
-    // Generate JWT token
->>>>>>> 977022b4e2c96e2f5dbd2736064f2ea6e482d209
     const token = jwt.sign(
       { userId: user.id, role: user.role },
       JWT_SECRET,
@@ -294,29 +221,16 @@ router.post('/google', async (req: Request, res: Response) => {
         name: user.name,
         role: user.role,
         phone: user.phone,
-<<<<<<< HEAD
         profilePicture: user.profilePicture,
       },
     });
   } catch (error) {
-=======
-        profilePicture: user.profilePicture || photoUrl,
-      },
-    });
-  } catch (error) {
-    console.error('Google auth error:', error);
->>>>>>> 977022b4e2c96e2f5dbd2736064f2ea6e482d209
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-<<<<<<< HEAD
 router.get('/me', authenticate, (req: AuthRequest, res: Response) => {
   const user = db.getUserById(req.userId!);
-=======
-router.get('/me', authenticate, async (req: AuthRequest, res: Response) => {
-  const user = await db.getUserById(req.userId!);
->>>>>>> 977022b4e2c96e2f5dbd2736064f2ea6e482d209
   if (!user) {
     return res.status(404).json({ error: 'User not found' });
   }

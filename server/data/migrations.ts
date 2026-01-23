@@ -1,6 +1,7 @@
-import { Pool } from 'pg';
+// PostgreSQL migrations - not used with JSON database
+// import { Pool } from 'pg';
 
-export async function initializeDatabase(pool: Pool): Promise<void> {
+export async function initializeDatabase(pool: any): Promise<void> {
   const client = await pool.connect();
   try {
     // Create users table
