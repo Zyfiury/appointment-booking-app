@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
+import '../providers/theme_provider.dart';
 
 class RatingWidget extends StatelessWidget {
   final double rating;
@@ -19,6 +21,9 @@ class RatingWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -26,19 +31,19 @@ class RatingWidget extends StatelessWidget {
           if (index < rating.floor()) {
             return Icon(
               Icons.star,
-              color: AppTheme.warningColor,
+              color: colors.warningColor,
               size: size,
             );
           } else if (index < rating) {
             return Icon(
               Icons.star_half,
-              color: AppTheme.warningColor,
+              color: colors.warningColor,
               size: size,
             );
           } else {
             return Icon(
               Icons.star_border,
-              color: AppTheme.textSecondary,
+              color: colors.textSecondary,
               size: size,
             );
           }
@@ -50,7 +55,7 @@ class RatingWidget extends StatelessWidget {
             style: TextStyle(
               fontSize: size * 0.9,
               fontWeight: FontWeight.w600,
-              color: AppTheme.textPrimary,
+              color: colors.textPrimary,
             ),
           ),
         ],
@@ -60,7 +65,7 @@ class RatingWidget extends StatelessWidget {
             '($totalRatings)',
             style: TextStyle(
               fontSize: size * 0.75,
-              color: AppTheme.textSecondary,
+              color: colors.textSecondary,
             ),
           ),
         ],
@@ -94,6 +99,8 @@ class _RatingSelectorState extends State<RatingSelector> {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: List.generate(5, (index) {
@@ -112,8 +119,8 @@ class _RatingSelectorState extends State<RatingSelector> {
                   ? Icons.star
                   : Icons.star_border,
               color: rating <= _selectedRating
-                  ? AppTheme.warningColor
-                  : AppTheme.textSecondary,
+                  ? colors.warningColor
+                  : colors.textSecondary,
               size: 40,
             ),
           ),

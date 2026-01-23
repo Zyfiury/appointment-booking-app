@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
+import '../providers/theme_provider.dart';
 
 class AppLogo extends StatelessWidget {
   final double size;
@@ -15,6 +17,9 @@ class AppLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -22,11 +27,11 @@ class AppLogo extends StatelessWidget {
           width: size,
           height: size,
           decoration: BoxDecoration(
-            gradient: AppTheme.primaryGradient,
+            gradient: colors.primaryGradient,
             borderRadius: BorderRadius.circular(size * 0.3),
             boxShadow: [
               BoxShadow(
-                color: AppTheme.primaryColor.withOpacity(0.4),
+                color: colors.primaryColor.withOpacity(0.4),
                 blurRadius: 20,
                 offset: const Offset(0, 8),
               ),
@@ -45,7 +50,7 @@ class AppLogo extends StatelessWidget {
             style: TextStyle(
               fontSize: fontSize ?? 24,
               fontWeight: FontWeight.bold,
-              color: AppTheme.textPrimary,
+              color: colors.textPrimary,
               letterSpacing: -0.5,
             ),
           ),
@@ -65,11 +70,13 @@ class AppLogoSmall extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        gradient: AppTheme.primaryGradient,
+        gradient: colors.primaryGradient,
         borderRadius: BorderRadius.circular(size * 0.25),
       ),
       child: Icon(

@@ -34,6 +34,7 @@ class ServiceService {
     required int duration,
     required double price,
     required String category,
+    int capacity = 1,
   }) async {
     try {
       final response = await _api.post('/services', data: {
@@ -42,6 +43,7 @@ class ServiceService {
         'duration': duration,
         'price': price,
         'category': category,
+        'capacity': capacity,
       });
       return Service.fromJson(response.data);
     } catch (e) {
@@ -56,6 +58,7 @@ class ServiceService {
     int? duration,
     double? price,
     String? category,
+    int? capacity,
   }) async {
     try {
       final response = await _api.patch('/services/$serviceId', data: {
@@ -64,6 +67,7 @@ class ServiceService {
         if (duration != null) 'duration': duration,
         if (price != null) 'price': price,
         if (category != null) 'category': category,
+        if (capacity != null) 'capacity': capacity,
       });
       return Service.fromJson(response.data);
     } catch (e) {

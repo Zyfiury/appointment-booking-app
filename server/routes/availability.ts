@@ -4,13 +4,14 @@ import { db } from '../data/database';
 
 const router = express.Router();
 
-// Get current provider's availability
-router.get('/', authenticate, (req: AuthRequest, res: Response) => {
+// Get provider availability
+router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     if (req.userRole !== 'provider') {
       return res.status(403).json({ error: 'Only providers can view availability' });
     }
-    const availability = db.getAvailability(req.userId!);
+
+    const availability = await db.getAvailability(req.userId!);
     res.json(availability);
   } catch (error) {
     console.error('Error fetching availability:', error);
@@ -18,10 +19,10 @@ router.get('/', authenticate, (req: AuthRequest, res: Response) => {
   }
 });
 
-// Get availability for a specific provider (public for booking)
-router.get('/provider/:providerId', (req: AuthRequest, res: Response) => {
+// Get availability for a specific provider (public endpoint for booking)
+router.get('/provider/:providerId', async (req: AuthRequest, res: Response) => {
   try {
-    const availability = db.getAvailability(req.params.providerId);
+    const availability = await db.getAvailability(req.params.providerId);
     res.json(availability);
   } catch (error) {
     console.error('Error fetching provider availability:', error);
@@ -29,54 +30,47 @@ router.get('/provider/:providerId', (req: AuthRequest, res: Response) => {
   }
 });
 
-// Create or update availability (upsert by providerId + dayOfWeek)
-router.post('/', authenticate, (req: AuthRequest, res: Response) => {
+// Create or update availability
+router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     if (req.userRole !== 'provider') {
       return res.status(403).json({ error: 'Only providers can set availability' });
     }
 
     const { dayOfWeek, startTime, endTime, breaks, isAvailable } = req.body;
+
     if (!dayOfWeek || !startTime || !endTime) {
-      return res
-        .status(400)
-        .json({ error: 'Missing required fields: dayOfWeek, startTime, endTime' });
+      return res.status(400).json({ error: 'Missing required fields: dayOfWeek, startTime, endTime' });
     }
 
-    const validDays = [
-      'monday',
-      'tuesday',
-      'wednesday',
-      'thursday',
-      'friday',
-      'saturday',
-      'sunday',
-    ];
-    if (!validDays.includes(String(dayOfWeek).toLowerCase())) {
+    // Validate day of week
+    const validDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    if (!validDays.includes(dayOfWeek.toLowerCase())) {
       return res.status(400).json({ error: 'Invalid day of week' });
     }
 
+    // Validate time format (HH:MM)
     const timeRegex = /^([0-1][0-9]|2[0-3]):[0-5][0-9]$/;
     if (!timeRegex.test(startTime) || !timeRegex.test(endTime)) {
-      return res
-        .status(400)
-        .json({ error: 'Invalid time format. Use HH:MM (24-hour format)' });
+      return res.status(400).json({ error: 'Invalid time format. Use HH:MM (24-hour format)' });
     }
 
+    // Validate end time is after start time
     const [startHour, startMin] = startTime.split(':').map(Number);
     const [endHour, endMin] = endTime.split(':').map(Number);
     const startMinutes = startHour * 60 + startMin;
     const endMinutes = endHour * 60 + endMin;
+    
     if (endMinutes <= startMinutes) {
       return res.status(400).json({ error: 'End time must be after start time' });
     }
 
-    const availability = db.createOrUpdateAvailability({
+    const availability = await db.createOrUpdateAvailability({
       providerId: req.userId!,
-      dayOfWeek: String(dayOfWeek).toLowerCase(),
+      dayOfWeek: dayOfWeek.toLowerCase(),
       startTime,
       endTime,
-      breaks: Array.isArray(breaks) ? breaks : [],
+      breaks: breaks || [],
       isAvailable: isAvailable !== false,
     });
 
@@ -87,18 +81,22 @@ router.post('/', authenticate, (req: AuthRequest, res: Response) => {
   }
 });
 
-// Delete availability by id (provider-owned)
-router.delete('/:id', authenticate, (req: AuthRequest, res: Response) => {
+// Delete availability
+router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     if (req.userRole !== 'provider') {
       return res.status(403).json({ error: 'Only providers can delete availability' });
     }
 
-    const rows = db.getAvailability(req.userId!);
-    const exists = rows.find((a) => a.id === req.params.id);
-    if (!exists) return res.status(404).json({ error: 'Availability not found' });
+    // Verify ownership
+    const availability = await db.getAvailability(req.userId!);
+    const exists = availability.find(a => a.id === req.params.id);
+    
+    if (!exists) {
+      return res.status(404).json({ error: 'Availability not found' });
+    }
 
-    db.deleteAvailability(req.params.id);
+    await db.deleteAvailability(req.params.id);
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting availability:', error);
@@ -107,12 +105,12 @@ router.delete('/:id', authenticate, (req: AuthRequest, res: Response) => {
 });
 
 // Provider date exceptions (days off / special hours)
-router.get('/exceptions', authenticate, (req: AuthRequest, res: Response) => {
+router.get('/exceptions', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     if (req.userRole !== 'provider') {
       return res.status(403).json({ error: 'Only providers can view exceptions' });
     }
-    const rows = db.getAvailabilityExceptions(req.userId!);
+    const rows = await db.getAvailabilityExceptions(req.userId!);
     res.json(rows);
   } catch (error) {
     console.error('Error fetching availability exceptions:', error);
@@ -120,9 +118,9 @@ router.get('/exceptions', authenticate, (req: AuthRequest, res: Response) => {
   }
 });
 
-router.get('/provider/:providerId/exceptions', (req, res: Response) => {
+router.get('/provider/:providerId/exceptions', async (req, res: Response) => {
   try {
-    const rows = db.getAvailabilityExceptions(req.params.providerId);
+    const rows = await db.getAvailabilityExceptions(req.params.providerId);
     res.json(rows);
   } catch (error) {
     console.error('Error fetching provider availability exceptions:', error);
@@ -130,7 +128,7 @@ router.get('/provider/:providerId/exceptions', (req, res: Response) => {
   }
 });
 
-router.post('/exceptions', authenticate, (req: AuthRequest, res: Response) => {
+router.post('/exceptions', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     if (req.userRole !== 'provider') {
       return res.status(403).json({ error: 'Only providers can set exceptions' });
@@ -141,34 +139,27 @@ router.post('/exceptions', authenticate, (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'Missing required field: date (yyyy-mm-dd)' });
     }
 
+    // If available=true, require start/end; if available=false (day off), allow empty times.
     const available = isAvailable !== false;
     const timeRegex = /^([0-1][0-9]|2[0-3]):[0-5][0-9]$/;
     if (available) {
       if (!startTime || !endTime) {
-        return res
-          .status(400)
-          .json({ error: 'startTime and endTime are required when isAvailable=true' });
+        return res.status(400).json({ error: 'startTime and endTime are required when isAvailable=true' });
       }
       if (!timeRegex.test(startTime) || !timeRegex.test(endTime)) {
-        return res
-          .status(400)
-          .json({ error: 'Invalid time format. Use HH:MM (24-hour format)' });
+        return res.status(400).json({ error: 'Invalid time format. Use HH:MM (24-hour format)' });
       }
     } else {
-      if (startTime && !timeRegex.test(startTime)) {
-        return res.status(400).json({ error: 'Invalid startTime format' });
-      }
-      if (endTime && !timeRegex.test(endTime)) {
-        return res.status(400).json({ error: 'Invalid endTime format' });
-      }
+      if (startTime && !timeRegex.test(startTime)) return res.status(400).json({ error: 'Invalid startTime format' });
+      if (endTime && !timeRegex.test(endTime)) return res.status(400).json({ error: 'Invalid endTime format' });
     }
 
-    const saved = db.createOrUpdateAvailabilityException({
+    const saved = await db.createOrUpdateAvailabilityException({
       providerId: req.userId!,
       date,
       startTime: startTime || undefined,
       endTime: endTime || undefined,
-      breaks: Array.isArray(breaks) ? breaks : [],
+      breaks: breaks || [],
       isAvailable: available,
       note: note || undefined,
     });
@@ -179,15 +170,15 @@ router.post('/exceptions', authenticate, (req: AuthRequest, res: Response) => {
   }
 });
 
-router.delete('/exceptions/:id', authenticate, (req: AuthRequest, res: Response) => {
+router.delete('/exceptions/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     if (req.userRole !== 'provider') {
       return res.status(403).json({ error: 'Only providers can delete exceptions' });
     }
-    const rows = db.getAvailabilityExceptions(req.userId!);
-    const exists = rows.find((x) => x.id === req.params.id);
+    const rows = await db.getAvailabilityExceptions(req.userId!);
+    const exists = rows.find(x => x.id === req.params.id);
     if (!exists) return res.status(404).json({ error: 'Exception not found' });
-    db.deleteAvailabilityException(req.params.id);
+    await db.deleteAvailabilityException(req.params.id);
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting availability exception:', error);
@@ -196,4 +187,3 @@ router.delete('/exceptions/:id', authenticate, (req: AuthRequest, res: Response)
 });
 
 export default router;
-

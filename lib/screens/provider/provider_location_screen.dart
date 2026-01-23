@@ -9,6 +9,8 @@ import '../../theme/app_theme.dart';
 import '../../widgets/layered_card.dart';
 import '../../widgets/fade_in_widget.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/theme_provider.dart';
+
 
 class ProviderLocationScreen extends StatefulWidget {
   const ProviderLocationScreen({super.key});
@@ -124,6 +126,8 @@ class _ProviderLocationScreenState extends State<ProviderLocationScreen> {
   }
 
   Future<void> _searchAddress() async {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
     if (_addressController.text.trim().isEmpty) return;
 
     setState(() {
@@ -156,8 +160,8 @@ class _ProviderLocationScreenState extends State<ProviderLocationScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text('Address not found'),
-              backgroundColor: AppTheme.errorColor,
+              content: Text('Address not found'),
+              backgroundColor: colors.errorColor,
             ),
           );
         }
@@ -170,7 +174,7 @@ class _ProviderLocationScreenState extends State<ProviderLocationScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error searching address: $e'),
-            backgroundColor: AppTheme.errorColor,
+            backgroundColor: colors.errorColor,
           ),
         );
       }
@@ -178,6 +182,8 @@ class _ProviderLocationScreenState extends State<ProviderLocationScreen> {
   }
 
   Future<void> _useCurrentLocation() async {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
     setState(() {
       _loading = true;
     });
@@ -212,8 +218,8 @@ class _ProviderLocationScreenState extends State<ProviderLocationScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text('Unable to get current location'),
-              backgroundColor: AppTheme.errorColor,
+              content: Text('Unable to get current location'),
+              backgroundColor: colors.errorColor,
             ),
           );
         }
@@ -226,11 +232,13 @@ class _ProviderLocationScreenState extends State<ProviderLocationScreen> {
   }
 
   Future<void> _saveLocation() async {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
     if (_selectedPosition == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Please select a location'),
-          backgroundColor: AppTheme.errorColor,
+          content: Text('Please select a location'),
+          backgroundColor: colors.errorColor,
         ),
       );
       return;
@@ -259,8 +267,8 @@ class _ProviderLocationScreenState extends State<ProviderLocationScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Location saved successfully!'),
-            backgroundColor: AppTheme.primaryColor,
+            content: Text('Location saved successfully!'),
+            backgroundColor: colors.primaryColor,
           ),
         );
         Navigator.pop(context);
@@ -270,7 +278,7 @@ class _ProviderLocationScreenState extends State<ProviderLocationScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to save location: $e'),
-            backgroundColor: AppTheme.errorColor,
+            backgroundColor: colors.errorColor,
           ),
         );
       }
@@ -283,12 +291,15 @@ class _ProviderLocationScreenState extends State<ProviderLocationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
+
     return Scaffold(
-      backgroundColor: AppTheme.backgroundColor,
+      backgroundColor: colors.backgroundColor,
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.transparent,
-        title: const Text('Set Location'),
+        title: Text('Set Location'),
       ),
       body: Stack(
         children: [
@@ -409,7 +420,7 @@ class _ProviderLocationScreenState extends State<ProviderLocationScreen> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               filled: true,
-                              fillColor: AppTheme.surfaceColor,
+                              fillColor: colors.surfaceColor,
                             ),
                             onSubmitted: (_) => _searchAddress(),
                           ),
@@ -428,10 +439,10 @@ class _ProviderLocationScreenState extends State<ProviderLocationScreen> {
                       child: ElevatedButton(
                         onPressed: _searchAddress,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryColor,
+                          backgroundColor: colors.primaryColor,
                           foregroundColor: Colors.white,
                         ),
-                        child: const Text('Search Address'),
+                        child: Text('Search Address'),
                       ),
                     ),
                   ],
@@ -457,7 +468,7 @@ class _ProviderLocationScreenState extends State<ProviderLocationScreen> {
                         children: [
                           Icon(
                             Icons.location_on,
-                            color: AppTheme.primaryColor,
+                            color: colors.primaryColor,
                             size: 20,
                           ),
                           const SizedBox(width: 8),
@@ -466,9 +477,9 @@ class _ProviderLocationScreenState extends State<ProviderLocationScreen> {
                               _addressController.text.isNotEmpty
                                   ? _addressController.text
                                   : 'Location selected',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 14,
-                                color: AppTheme.textSecondary,
+                                color: colors.textSecondary,
                               ),
                             ),
                           ),
@@ -481,7 +492,7 @@ class _ProviderLocationScreenState extends State<ProviderLocationScreen> {
                       child: ElevatedButton(
                         onPressed: _saving ? null : _saveLocation,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryColor,
+                          backgroundColor: colors.primaryColor,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                         ),
@@ -494,7 +505,7 @@ class _ProviderLocationScreenState extends State<ProviderLocationScreen> {
                                   valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                 ),
                               )
-                            : const Text('Save Location'),
+                            : Text('Save Location'),
                       ),
                     ),
                   ],

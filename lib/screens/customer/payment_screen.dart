@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../models/appointment.dart';
 import '../../services/payment_service.dart';
 import '../../theme/app_theme.dart';
@@ -7,6 +8,8 @@ import '../../widgets/animated_button.dart';
 import '../../widgets/layered_card.dart';
 import '../../widgets/fade_in_widget.dart';
 import 'my_appointments_screen.dart';
+import '../../providers/theme_provider.dart';
+
 
 class PaymentScreen extends StatefulWidget {
   final Appointment appointment;
@@ -111,6 +114,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   Future<void> _processPayment() async {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
     // Validate card number
     final cardNumber = _cardNumberController.text.replaceAll(RegExp(r'[\s-]'), '');
     if (!_validateCardNumber(cardNumber)) {
@@ -173,7 +178,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 ),
               ],
             ),
-            backgroundColor: AppTheme.accentColor,
+            backgroundColor: colors.accentColor,
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 3),
           ),
@@ -192,7 +197,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Payment failed: ${e.toString()}'),
-            backgroundColor: AppTheme.errorColor,
+            backgroundColor: colors.errorColor,
             duration: const Duration(seconds: 4),
           ),
         );
@@ -202,16 +207,19 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
+
     return Scaffold(
-      backgroundColor: AppTheme.backgroundColor,
+      backgroundColor: colors.backgroundColor,
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.transparent,
-        title: const Text('Payment'),
+        title: Text('Payment'),
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppTheme.darkGradient,
+        decoration: BoxDecoration(
+          gradient: colors.backgroundGradient,
         ),
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
@@ -226,12 +234,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Appointment Summary',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: AppTheme.textPrimary,
+                          color: colors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -240,15 +248,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
                         children: [
                           Text(
                             widget.appointment.service.name,
-                            style: const TextStyle(
-                              color: AppTheme.textPrimary,
+                            style: TextStyle(
+                              color: colors.textPrimary,
                               fontSize: 16,
                             ),
                           ),
                           Text(
                             '\$${widget.appointment.service.price.toStringAsFixed(2)}',
-                            style: const TextStyle(
-                              color: AppTheme.primaryColor,
+                            style: TextStyle(
+                              color: colors.primaryColor,
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                             ),
@@ -259,12 +267,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       Text(
                         'Provider: ${widget.appointment.provider.name}',
                         style: TextStyle(
-                          color: AppTheme.textSecondary,
+                          color: colors.textSecondary,
                           fontSize: 14,
                         ),
                       ),
                       const SizedBox(height: 16),
-                      const Divider(color: AppTheme.textSecondary),
+                      Divider(color: colors.textSecondary),
                       const SizedBox(height: 12),
                       // Commission breakdown (optional - can be hidden for customers)
                       Row(
@@ -273,14 +281,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           Text(
                             'Service Fee (15%)',
                             style: TextStyle(
-                              color: AppTheme.textSecondary,
+                              color: colors.textSecondary,
                               fontSize: 12,
                             ),
                           ),
                           Text(
                             '\$${(widget.appointment.service.price * 0.15).toStringAsFixed(2)}',
                             style: TextStyle(
-                              color: AppTheme.textSecondary,
+                              color: colors.textSecondary,
                               fontSize: 12,
                             ),
                           ),
@@ -293,14 +301,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           Text(
                             'Provider Receives',
                             style: TextStyle(
-                              color: AppTheme.textSecondary,
+                              color: colors.textSecondary,
                               fontSize: 12,
                             ),
                           ),
                           Text(
                             '\$${(widget.appointment.service.price * 0.85).toStringAsFixed(2)}',
                             style: TextStyle(
-                              color: AppTheme.textSecondary,
+                              color: colors.textSecondary,
                               fontSize: 12,
                             ),
                           ),
@@ -320,31 +328,31 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Card Details',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: AppTheme.textPrimary,
+                          color: colors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 20),
                       TextField(
                         controller: _cardNumberController,
                         keyboardType: TextInputType.number,
-                        style: const TextStyle(color: AppTheme.textPrimary),
+                        style: TextStyle(color: colors.textPrimary),
                         decoration: InputDecoration(
                           labelText: 'Card Number',
                           hintText: '1234 5678 9012 3456',
                           filled: true,
-                          fillColor: AppTheme.surfaceColor,
+                          fillColor: colors.surfaceColor,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,
                           ),
-                          prefixIcon: const Icon(
+                          prefixIcon: Icon(
                             Icons.credit_card,
-                            color: AppTheme.textSecondary,
+                            color: colors.textSecondary,
                           ),
                         ),
                         onChanged: (value) {
@@ -368,12 +376,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
                             child: TextField(
                               controller: _expiryController,
                               keyboardType: TextInputType.number,
-                              style: const TextStyle(color: AppTheme.textPrimary),
+                              style: TextStyle(color: colors.textPrimary),
                               decoration: InputDecoration(
                                 labelText: 'MM/YY',
                                 hintText: '12/25',
                                 filled: true,
-                                fillColor: AppTheme.surfaceColor,
+                                fillColor: colors.surfaceColor,
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
                                   borderSide: BorderSide.none,
@@ -400,19 +408,19 @@ class _PaymentScreenState extends State<PaymentScreen> {
                               controller: _cvcController,
                               keyboardType: TextInputType.number,
                               obscureText: true,
-                              style: const TextStyle(color: AppTheme.textPrimary),
+                              style: TextStyle(color: colors.textPrimary),
                               decoration: InputDecoration(
                                 labelText: 'CVC',
                                 hintText: '123',
                                 filled: true,
-                                fillColor: AppTheme.surfaceColor,
+                                fillColor: colors.surfaceColor,
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
                                   borderSide: BorderSide.none,
                                 ),
-                                prefixIcon: const Icon(
+                                prefixIcon: Icon(
                                   Icons.lock_outline,
-                                  color: AppTheme.textSecondary,
+                                  color: colors.textSecondary,
                                 ),
                               ),
                               maxLength: 4,
@@ -425,25 +433,25 @@ class _PaymentScreenState extends State<PaymentScreen> {
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: AppTheme.errorColor.withOpacity(0.1),
+                            color: colors.errorColor.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                              color: AppTheme.errorColor.withOpacity(0.3),
+                              color: colors.errorColor.withOpacity(0.3),
                             ),
                           ),
                           child: Row(
                             children: [
-                              const Icon(
+                              Icon(
                                 Icons.error_outline,
-                                color: AppTheme.errorColor,
+                                color: colors.errorColor,
                                 size: 20,
                               ),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   _error!,
-                                  style: const TextStyle(
-                                    color: AppTheme.errorColor,
+                                  style: TextStyle(
+                                    color: colors.errorColor,
                                     fontSize: 13,
                                   ),
                                 ),
@@ -465,7 +473,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   icon: Icons.payment,
                   isLoading: _processing,
                   onPressed: _processing ? null : _processPayment,
-                  backgroundColor: AppTheme.primaryColor,
+                  backgroundColor: colors.primaryColor,
                 ),
               ),
               const SizedBox(height: 16),
@@ -483,14 +491,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           children: [
                             Icon(
                               Icons.info_outline,
-                              color: AppTheme.warningColor,
+                              color: colors.warningColor,
                               size: 18,
                             ),
                             const SizedBox(width: 8),
                             Text(
                               'Test Mode',
                               style: TextStyle(
-                                color: AppTheme.warningColor,
+                                color: colors.warningColor,
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -501,7 +509,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                         Text(
                           'Use test card: 4242 4242 4242 4242\nExpiry: Any future date (e.g., 12/25)\nCVC: Any 3 digits (e.g., 123)',
                           style: TextStyle(
-                            color: AppTheme.textSecondary,
+                            color: colors.textSecondary,
                             fontSize: 12,
                             height: 1.4,
                           ),
@@ -521,7 +529,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     children: [
                       Icon(
                         Icons.lock_outline,
-                        color: AppTheme.accentColor,
+                        color: colors.accentColor,
                         size: 20,
                       ),
                       const SizedBox(width: 12),
@@ -529,7 +537,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                         child: Text(
                           'Your payment is secure and encrypted',
                           style: TextStyle(
-                            color: AppTheme.textSecondary,
+                            color: colors.textSecondary,
                             fontSize: 13,
                           ),
                         ),

@@ -39,6 +39,7 @@
             android:name="com.google.android.gms.version"
             android:value="@integer/google_play_services_version" />
         <!-- Google Sign-In Configuration -->
+        <!-- This uses the client ID from strings.xml -->
         <meta-data
             android:name="com.google.android.gms.auth.api.signin.GoogleSignInOptions.DEFAULT_SIGN_IN"
             android:value="@string/default_web_client_id" />

@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import '../providers/theme_provider.dart';
+import '../theme/app_theme.dart';
 
 class AnimatedButton extends StatefulWidget {
   final String text;
@@ -32,9 +36,9 @@ class _AnimatedButtonState extends State<AnimatedButton>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 100),
+      duration: const Duration(milliseconds: 150),
     );
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.95).animate(
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.96).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
     );
   }
@@ -47,6 +51,7 @@ class _AnimatedButtonState extends State<AnimatedButton>
 
   void _onTapDown(TapDownDetails details) {
     _controller.forward();
+    HapticFeedback.selectionClick();
   }
 
   void _onTapUp(TapUpDetails details) {
@@ -59,11 +64,19 @@ class _AnimatedButtonState extends State<AnimatedButton>
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
+
     return GestureDetector(
       onTapDown: widget.onPressed != null ? _onTapDown : null,
       onTapUp: widget.onPressed != null ? _onTapUp : null,
       onTapCancel: widget.onPressed != null ? _onTapCancel : null,
-      onTap: widget.isLoading ? null : widget.onPressed,
+      onTap: widget.isLoading
+          ? null
+          : () {
+              HapticFeedback.lightImpact();
+              widget.onPressed?.call();
+            },
       child: ScaleTransition(
         scale: _scaleAnimation,
         child: Container(
@@ -71,21 +84,27 @@ class _AnimatedButtonState extends State<AnimatedButton>
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: widget.backgroundColor != null
-                  ? [widget.backgroundColor!, widget.backgroundColor!.withOpacity(0.8)]
+                  ? [widget.backgroundColor!, widget.backgroundColor!.withOpacity(0.85)]
                   : [
                       Theme.of(context).colorScheme.primary,
-                      Theme.of(context).colorScheme.primary.withOpacity(0.8),
+                      Theme.of(context).colorScheme.primary.withOpacity(0.85),
                     ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18),
             boxShadow: [
               BoxShadow(
                 color: (widget.backgroundColor ?? Theme.of(context).colorScheme.primary)
-                    .withOpacity(0.3),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
+                    .withOpacity(0.4),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+                spreadRadius: -2,
+              ),
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
             ],
           ),

@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/theme_provider.dart';
+import '../theme/app_theme.dart';
 
 class FadeInWidget extends StatefulWidget {
   final Widget child;
@@ -10,8 +13,8 @@ class FadeInWidget extends StatefulWidget {
   const FadeInWidget({
     super.key,
     required this.child,
-    this.duration = const Duration(milliseconds: 600),
-    this.curve = Curves.easeOut,
+    this.duration = const Duration(milliseconds: 500),
+    this.curve = Curves.easeOutCubic,
     this.begin = 0.0,
     this.end = 1.0,
   });
@@ -50,6 +53,9 @@ class _FadeInWidgetState extends State<FadeInWidget>
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
+
     return FadeTransition(
       opacity: _fadeAnimation,
       child: widget.child,

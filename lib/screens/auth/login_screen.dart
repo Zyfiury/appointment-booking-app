@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/theme_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/animated_button.dart';
 import '../../widgets/fade_in_widget.dart';
+import '../../widgets/slide_in_widget.dart';
 import '../../widgets/layered_card.dart';
 import '../../widgets/app_logo.dart';
+import '../../widgets/bounce_animation.dart';
+import '../../utils/validators.dart';
+import '../../utils/network_utils.dart';
+import '../../widgets/retry_button.dart';
 import 'register_screen.dart';
+
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -74,6 +81,8 @@ class _LoginScreenState extends State<LoginScreen>
       
       // Show detailed error message
       if (!mounted) return;
+      final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+      final colors = AppTheme.getColors(themeProvider.currentTheme);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
@@ -83,12 +92,12 @@ class _LoginScreenState extends State<LoginScreen>
               Expanded(
                 child: Text(
                   errorMessage,
-                  style: const TextStyle(fontSize: 14),
+                  style: TextStyle(fontSize: 14),
                 ),
               ),
             ],
           ),
-          backgroundColor: AppTheme.errorColor,
+          backgroundColor: colors.errorColor,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           margin: const EdgeInsets.all(16),
@@ -107,10 +116,13 @@ class _LoginScreenState extends State<LoginScreen>
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
+
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppTheme.darkGradient,
+        decoration: BoxDecoration(
+          gradient: colors.backgroundGradient,
         ),
         child: SafeArea(
           child: SingleChildScrollView(
@@ -146,7 +158,7 @@ class _LoginScreenState extends State<LoginScreen>
                           'Welcome Back',
                           style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                                 fontWeight: FontWeight.bold,
-                                color: AppTheme.textPrimary,
+                                color: colors.textPrimary,
                               ),
                           textAlign: TextAlign.center,
                         ),
@@ -154,7 +166,7 @@ class _LoginScreenState extends State<LoginScreen>
                         Text(
                           'Sign in to continue to your account',
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: AppTheme.textSecondary,
+                                color: colors.textSecondary,
                                 fontSize: 15,
                               ),
                           textAlign: TextAlign.center,
@@ -177,9 +189,9 @@ class _LoginScreenState extends State<LoginScreen>
                           child: TextFormField(
                             controller: _emailController,
                             keyboardType: TextInputType.emailAddress,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 16,
-                              color: AppTheme.textPrimary,
+                              color: colors.textPrimary,
                             ),
                             decoration: InputDecoration(
                               labelText: 'Email',
@@ -187,25 +199,17 @@ class _LoginScreenState extends State<LoginScreen>
                               prefixIcon: Container(
                                 margin: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
-                                  color: AppTheme.primaryColor.withOpacity(0.2),
+                                  color: colors.primaryColor.withOpacity(0.2),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: const Icon(
+                                child: Icon(
                                   Icons.email_outlined,
-                                  color: AppTheme.primaryColor,
+                                  color: colors.primaryColor,
                                   size: 20,
                                 ),
                               ),
                             ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Please enter your email';
-                              }
-                              if (!value.contains('@')) {
-                                return 'Please enter a valid email';
-                              }
-                              return null;
-                            },
+                            validator: Validators.email,
                           ),
                         ),
                         const SizedBox(height: 20),
@@ -216,9 +220,9 @@ class _LoginScreenState extends State<LoginScreen>
                           child: TextFormField(
                             controller: _passwordController,
                             obscureText: _obscurePassword,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 16,
-                              color: AppTheme.textPrimary,
+                              color: colors.textPrimary,
                             ),
                             decoration: InputDecoration(
                               labelText: 'Password',
@@ -226,12 +230,12 @@ class _LoginScreenState extends State<LoginScreen>
                               prefixIcon: Container(
                                 margin: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
-                                  color: AppTheme.primaryColor.withOpacity(0.2),
+                                  color: colors.primaryColor.withOpacity(0.2),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: const Icon(
+                                child: Icon(
                                   Icons.lock_outlined,
-                                  color: AppTheme.primaryColor,
+                                  color: colors.primaryColor,
                                   size: 20,
                                 ),
                               ),
@@ -240,7 +244,7 @@ class _LoginScreenState extends State<LoginScreen>
                                   _obscurePassword
                                       ? Icons.visibility_outlined
                                       : Icons.visibility_off_outlined,
-                                  color: AppTheme.textSecondary,
+                                  color: colors.textSecondary,
                                 ),
                                 onPressed: () {
                                   setState(() {
@@ -249,12 +253,7 @@ class _LoginScreenState extends State<LoginScreen>
                                 },
                               ),
                             ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Please enter your password';
-                              }
-                              return null;
-                            },
+                            validator: Validators.simplePassword,
                           ),
                         ),
                         const SizedBox(height: 16),
@@ -265,10 +264,10 @@ class _LoginScreenState extends State<LoginScreen>
                             onPressed: () {
                               Navigator.pushNamed(context, '/forgot-password');
                             },
-                            child: const Text(
+                            child: Text(
                               'Forgot Password?',
                               style: TextStyle(
-                                color: AppTheme.primaryColor,
+                                color: colors.primaryColor,
                                 fontSize: 14,
                               ),
                             ),
@@ -286,7 +285,7 @@ class _LoginScreenState extends State<LoginScreen>
                                 icon: Icons.login_rounded,
                                 isLoading: authProvider.loading,
                                 onPressed: authProvider.loading ? null : _handleLogin,
-                                backgroundColor: AppTheme.primaryColor,
+                                backgroundColor: colors.primaryColor,
                               );
                             },
                           ),
@@ -317,16 +316,16 @@ class _LoginScreenState extends State<LoginScreen>
                                   content: Text(
                                     authProvider.lastError ?? 'Google sign in failed',
                                   ),
-                                  backgroundColor: AppTheme.errorColor,
+                                  backgroundColor: colors.errorColor,
                                 ),
                               );
                             }
                           },
-                          icon: const Icon(Icons.login, size: 24, color: AppTheme.textPrimary),
-                          label: const Text('Continue with Google'),
+                          icon: Icon(Icons.login, size: 24, color: colors.textPrimary),
+                          label: Text('Continue with Google'),
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 16),
-                            side: BorderSide(color: AppTheme.borderColor),
+                            side: BorderSide(color: colors.borderColor),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -348,7 +347,7 @@ class _LoginScreenState extends State<LoginScreen>
                           Text(
                             "Don't have an account? ",
                             style: TextStyle(
-                              color: AppTheme.textSecondary,
+                              color: colors.textSecondary,
                               fontSize: 15,
                             ),
                           ),
@@ -375,12 +374,12 @@ class _LoginScreenState extends State<LoginScreen>
                                 vertical: 8,
                               ),
                             ),
-                            child: const Text(
+                            child: Text(
                               'Sign Up',
                               style: TextStyle(
                                 fontWeight: FontWeight.w600,
                                 fontSize: 15,
-                                color: AppTheme.primaryColor,
+                                color: colors.primaryColor,
                               ),
                             ),
                           ),

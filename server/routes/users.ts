@@ -1,8 +1,6 @@
 import express, { Response } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { db } from '../data/database';
-import { searchRateLimit } from '../middleware/rateLimit';
-import { isOnboardingComplete } from '../utils/onboarding';
 
 const router = express.Router();
 
@@ -19,11 +17,10 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c; // Distance in kilometers
 }
 
-router.get('/providers', (req, res: Response) => {
+router.get('/providers', async (req, res: Response) => {
   try {
-    const providers = db.getUsers()
-      .filter(u => u.role === 'provider' && isOnboardingComplete(u.id));
-    const reviews = db.getReviews();
+    const providers = await db.getProviders();
+    const reviews = await db.getReviews();
     
     res.json(providers.map(p => {
       const providerReviews = reviews.filter(r => r.providerId === p.id);
@@ -41,7 +38,6 @@ router.get('/providers', (req, res: Response) => {
         latitude: p.latitude,
         longitude: p.longitude,
         address: p.address,
-        profilePicture: p.profilePicture,
       };
     }));
   } catch (error) {
@@ -49,88 +45,19 @@ router.get('/providers', (req, res: Response) => {
   }
 });
 
-router.get('/providers/search', searchRateLimit, (req, res: Response) => {
+router.get('/providers/search', async (req, res: Response) => {
   try {
-    let providers = db.getUsers()
-      .filter(u => u.role === 'provider' && isOnboardingComplete(u.id));
-    const reviews = db.getReviews();
-    const services = db.getServices();
-    const { q, category, subcategory, minPrice, maxPrice, minRating, latitude, longitude, radius, sortBy, hasService } = req.query;
+    let providers = await db.getProviders();
+    const reviews = await db.getReviews();
+    const { q, category, minPrice, maxPrice, minRating, latitude, longitude, radius, sortBy } = req.query;
 
     // Apply filters
     if (q) {
       const query = (q as string).toLowerCase();
-      // Search in provider name, address, and also in service names/descriptions
-      const matchingProviderIds = new Set<string>();
-      
-      providers.forEach(p => {
-        if (p.name.toLowerCase().includes(query) ||
-            p.email.toLowerCase().includes(query) ||
-            p.address?.toLowerCase().includes(query)) {
-          matchingProviderIds.add(p.id);
-        }
-      });
-      
-      // Also search in services
-      services.forEach(s => {
-        if (s.name.toLowerCase().includes(query) ||
-            s.description.toLowerCase().includes(query) ||
-            s.tags?.some(tag => tag.toLowerCase().includes(query))) {
-          matchingProviderIds.add(s.providerId);
-        }
-      });
-      
-      providers = providers.filter(p => matchingProviderIds.has(p.id));
-    }
-
-    // Filter by service name/keyword (hasService)
-    if (hasService) {
-      const serviceQuery = (hasService as string).toLowerCase();
-      const providerIdsWithService = new Set(
-        services
-          .filter(s => 
-            s.name.toLowerCase().includes(serviceQuery) ||
-            s.description.toLowerCase().includes(serviceQuery) ||
-            s.tags?.some(tag => tag.toLowerCase().includes(serviceQuery))
-          )
-          .map(s => s.providerId)
+      providers = providers.filter(p => 
+        p.name.toLowerCase().includes(query) ||
+        p.email.toLowerCase().includes(query)
       );
-      providers = providers.filter(p => providerIdsWithService.has(p.id));
-    }
-
-    // Filter by category (via services)
-    if (category) {
-      const categoryStr = category as string;
-      const providerIdsWithCategory = new Set(
-        services
-          .filter(s => s.category.toLowerCase() === categoryStr.toLowerCase())
-          .map(s => s.providerId)
-      );
-      providers = providers.filter(p => providerIdsWithCategory.has(p.id));
-    }
-
-    // Filter by subcategory (via services)
-    if (subcategory) {
-      const subcategoryStr = subcategory as string;
-      const providerIdsWithSubcategory = new Set(
-        services
-          .filter(s => s.subcategory?.toLowerCase() === subcategoryStr.toLowerCase())
-          .map(s => s.providerId)
-      );
-      providers = providers.filter(p => providerIdsWithSubcategory.has(p.id));
-    }
-
-    // Filter by price range (via services)
-    if (minPrice || maxPrice) {
-      const min = minPrice ? parseFloat(minPrice as string) : 0;
-      const max = maxPrice ? parseFloat(maxPrice as string) : Infinity;
-      
-      const providerIdsInPriceRange = new Set(
-        services
-          .filter(s => s.price >= min && s.price <= max)
-          .map(s => s.providerId)
-      );
-      providers = providers.filter(p => providerIdsInPriceRange.has(p.id));
     }
 
     if (minRating) {
@@ -192,15 +119,6 @@ router.get('/providers/search', searchRateLimit, (req, res: Response) => {
       );
     } else if (sortBy === 'name') {
       providersWithRatings.sort((a, b) => a.name.localeCompare(b.name));
-    } else if (sortBy === 'price') {
-      // Sort by minimum service price
-      providersWithRatings.sort((a, b) => {
-        const aServices = services.filter(s => s.providerId === a.id);
-        const bServices = services.filter(s => s.providerId === b.id);
-        const aMinPrice = aServices.length > 0 ? Math.min(...aServices.map(s => s.price)) : Infinity;
-        const bMinPrice = bServices.length > 0 ? Math.min(...bServices.map(s => s.price)) : Infinity;
-        return aMinPrice - bMinPrice;
-      });
     }
 
     res.json(providersWithRatings);
@@ -209,13 +127,13 @@ router.get('/providers/search', searchRateLimit, (req, res: Response) => {
   }
 });
 
-router.get('/providers/:id', (req, res: Response) => {
+router.get('/providers/:id', async (req, res: Response) => {
   try {
-    const provider = db.getUserById(req.params.id);
-    if (!provider || provider.role !== 'provider') {
+    const provider = await db.getProviderById(req.params.id);
+    if (!provider) {
       return res.status(404).json({ error: 'Provider not found' });
     }
-    const reviews = db.getReviews();
+    const reviews = await db.getReviews();
     const providerReviews = reviews.filter(r => r.providerId === provider.id);
     const rating = providerReviews.length > 0
       ? providerReviews.reduce((sum, r) => sum + r.rating, 0) / providerReviews.length
@@ -231,16 +149,15 @@ router.get('/providers/:id', (req, res: Response) => {
       latitude: provider.latitude,
       longitude: provider.longitude,
       address: provider.address,
-      profilePicture: provider.profilePicture,
     });
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-router.get('/profile', authenticate, (req: AuthRequest, res: Response) => {
+router.get('/profile', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const user = db.getUserById(req.userId!);
+    const user = await db.getUserById(req.userId!);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -253,26 +170,92 @@ router.get('/profile', authenticate, (req: AuthRequest, res: Response) => {
       latitude: user.latitude,
       longitude: user.longitude,
       address: user.address,
-      profilePicture: user.profilePicture,
     });
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-router.patch('/profile', authenticate, (req: AuthRequest, res: Response) => {
+router.patch('/profile', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { name, email, phone, latitude, longitude, address, profilePicture } = req.body;
+    const { name, phone, latitude, longitude, address, profilePicture } = req.body;
     const updates: any = {};
-    if (name) updates.name = name;
-    if (email) updates.email = email;
-    if (phone !== undefined) updates.phone = phone;
-    if (latitude !== undefined) updates.latitude = latitude;
-    if (longitude !== undefined) updates.longitude = longitude;
-    if (address !== undefined) updates.address = address;
-    if (profilePicture !== undefined) updates.profilePicture = profilePicture;
 
-    const updated = db.updateUser(req.userId!, updates);
+    // Validate name if provided
+    if (name !== undefined) {
+      if (typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 100) {
+        return res.status(400).json({ error: 'Name must be between 2 and 100 characters' });
+      }
+      updates.name = name.trim();
+    }
+
+    // Validate phone if provided
+    if (phone !== undefined) {
+      if (phone !== null && phone !== '') {
+        // Basic phone validation (allows various formats)
+        const phoneRegex = /^[\d\s\-\+\(\)]+$/;
+        if (typeof phone !== 'string' || !phoneRegex.test(phone) || phone.length > 20) {
+          return res.status(400).json({ error: 'Invalid phone number format' });
+        }
+        updates.phone = phone.trim();
+      } else {
+        updates.phone = null;
+      }
+    }
+
+    // Validate coordinates if provided
+    if (latitude !== undefined) {
+      const lat = parseFloat(latitude);
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        return res.status(400).json({ error: 'Latitude must be between -90 and 90' });
+      }
+      updates.latitude = lat;
+    }
+
+    if (longitude !== undefined) {
+      const lng = parseFloat(longitude);
+      if (isNaN(lng) || lng < -180 || lng > 180) {
+        return res.status(400).json({ error: 'Longitude must be between -180 and 180' });
+      }
+      updates.longitude = lng;
+    }
+
+    // Validate address if provided
+    if (address !== undefined) {
+      if (address !== null && address !== '') {
+        if (typeof address !== 'string' || address.trim().length > 200) {
+          return res.status(400).json({ error: 'Address cannot exceed 200 characters' });
+        }
+        updates.address = address.trim();
+      } else {
+        updates.address = null;
+      }
+    }
+
+    // Validate profile picture URL if provided
+    if (profilePicture !== undefined) {
+      if (profilePicture !== null && profilePicture !== '') {
+        if (typeof profilePicture !== 'string' || profilePicture.length > 500) {
+          return res.status(400).json({ error: 'Profile picture URL cannot exceed 500 characters' });
+        }
+        // Basic URL validation
+        try {
+          new URL(profilePicture);
+        } catch {
+          return res.status(400).json({ error: 'Invalid profile picture URL format' });
+        }
+        updates.profilePicture = profilePicture.trim();
+      } else {
+        updates.profilePicture = null;
+      }
+    }
+
+    // Check if there are any updates
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+
+    const updated = await db.updateUser(req.userId!, updates);
     if (!updated) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -289,43 +272,8 @@ router.patch('/profile', authenticate, (req: AuthRequest, res: Response) => {
       profilePicture: updated.profilePicture,
     });
   } catch (error) {
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// Profile picture upload endpoint
-router.post('/upload-profile-picture', authenticate, (req: AuthRequest, res: Response) => {
-  try {
-    // In production, use multer or similar to handle file uploads
-    // For now, accept base64 or URL
-    const { image, imageUrl } = req.body;
-    
-    let profilePictureUrl: string;
-    
-    if (imageUrl) {
-      // If URL provided, use it directly
-      profilePictureUrl = imageUrl;
-    } else if (image) {
-      // If base64 image provided, save it and return URL
-      // In production, upload to S3, Cloudinary, or similar
-      // For now, return a placeholder URL
-      profilePictureUrl = `https://api.placeholder.com/200/200?text=Profile`;
-    } else {
-      return res.status(400).json({ error: 'Image or imageUrl is required' });
-    }
-
-    // Update user profile picture
-    const updated = db.updateUser(req.userId!, { profilePicture: profilePictureUrl });
-    if (!updated) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    res.json({
-      profilePicture: profilePictureUrl,
-      message: 'Profile picture updated successfully',
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    console.error('Error updating profile:', error);
+    res.status(500).json({ error: 'Failed to update profile. Please try again.' });
   }
 });
 

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_logo.dart';
 import '../../widgets/animated_button.dart';
 import '../../widgets/fade_in_widget.dart';
 import '../auth/login_screen.dart';
+import '../../providers/theme_provider.dart';
+
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -17,32 +20,34 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
 
-  final List<OnboardingPage> _pages = [
-    OnboardingPage(
-      icon: Icons.calendar_today_rounded,
-      title: 'Book Appointments Easily',
-      description: 'Find and book appointments with service providers in just a few taps. Simple, fast, and convenient.',
-      color: AppTheme.primaryColor,
-    ),
-    OnboardingPage(
-      icon: Icons.notifications_active_rounded,
-      title: 'Never Miss an Appointment',
-      description: 'Get smart reminders before your appointments. Stay organized and never be late again.',
-      color: AppTheme.secondaryColor,
-    ),
-    OnboardingPage(
-      icon: Icons.star_rounded,
-      title: 'Trusted Providers',
-      description: 'Browse reviews and ratings to find the best service providers. Quality guaranteed.',
-      color: AppTheme.accentColor,
-    ),
-    OnboardingPage(
-      icon: Icons.payment_rounded,
-      title: 'Secure Payments',
-      description: 'Pay securely through the app. Multiple payment options available for your convenience.',
-      color: AppTheme.primaryColor,
-    ),
-  ];
+  List<OnboardingPage> _getPages(ThemeColors colors) {
+    return [
+      OnboardingPage(
+        icon: Icons.calendar_today_rounded,
+        title: 'Book Appointments Easily',
+        description: 'Find and book appointments with service providers in just a few taps. Simple, fast, and convenient.',
+        color: colors.primaryColor,
+      ),
+      OnboardingPage(
+        icon: Icons.notifications_active_rounded,
+        title: 'Never Miss an Appointment',
+        description: 'Get smart reminders before your appointments. Stay organized and never be late again.',
+        color: colors.accentColor,
+      ),
+      OnboardingPage(
+        icon: Icons.star_rounded,
+        title: 'Trusted Providers',
+        description: 'Browse reviews and ratings to find the best service providers. Quality guaranteed.',
+        color: colors.accentColor,
+      ),
+      OnboardingPage(
+        icon: Icons.payment_rounded,
+        title: 'Secure Payments',
+        description: 'Pay securely through the app. Multiple payment options available for your convenience.',
+        color: colors.primaryColor,
+      ),
+    ];
+  }
 
   @override
   void dispose() {
@@ -63,7 +68,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   void _nextPage() {
-    if (_currentPage < _pages.length - 1) {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
+    if (_currentPage < _getPages(colors).length - 1) {
       _pageController.nextPage(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
@@ -79,10 +86,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
+
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppTheme.darkGradient,
+        decoration: BoxDecoration(
+          gradient: colors.backgroundGradient,
         ),
         child: SafeArea(
           child: Column(
@@ -97,7 +107,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     child: Text(
                       'Skip',
                       style: TextStyle(
-                        color: AppTheme.textSecondary,
+                        color: colors.textSecondary,
                         fontSize: 16,
                       ),
                     ),
@@ -113,10 +123,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       _currentPage = index;
                     });
                   },
-                  itemCount: _pages.length,
+                  itemCount: _getPages(colors).length,
                   itemBuilder: (context, index) {
                     return _OnboardingPageWidget(
-                      page: _pages[index],
+                      page: _getPages(colors)[index],
                       index: index,
                     );
                   },
@@ -126,7 +136,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: List.generate(
-                  _pages.length,
+                  _getPages(colors).length,
                   (index) => _PageIndicator(
                     isActive: index == _currentPage,
                   ),
@@ -137,14 +147,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: AnimatedButton(
-                  text: _currentPage == _pages.length - 1
+                  text: _currentPage == _getPages(colors).length - 1
                       ? 'Get Started'
                       : 'Next',
-                  icon: _currentPage == _pages.length - 1
+                  icon: _currentPage == _getPages(colors).length - 1
                       ? Icons.arrow_forward_rounded
                       : Icons.arrow_forward_ios_rounded,
                   onPressed: _nextPage,
-                  backgroundColor: AppTheme.primaryColor,
+                  backgroundColor: colors.primaryColor,
                 ),
               ),
               const SizedBox(height: 32),
@@ -167,6 +177,8 @@ class _OnboardingPageWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
     return Padding(
       padding: const EdgeInsets.all(32),
       child: Column(
@@ -198,7 +210,7 @@ class _OnboardingPageWidget extends StatelessWidget {
               page.title,
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                     fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
+                    color: colors.textPrimary,
                   ),
               textAlign: TextAlign.center,
             ),
@@ -210,7 +222,7 @@ class _OnboardingPageWidget extends StatelessWidget {
             child: Text(
               page.description,
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: AppTheme.textSecondary,
+                    color: colors.textSecondary,
                     fontSize: 16,
                     height: 1.5,
                   ),
@@ -230,13 +242,15 @@ class _PageIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final colors = AppTheme.getColors(themeProvider.currentTheme);
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       margin: const EdgeInsets.symmetric(horizontal: 4),
       width: isActive ? 24 : 8,
       height: 8,
       decoration: BoxDecoration(
-        color: isActive ? AppTheme.primaryColor : AppTheme.borderColor,
+        color: isActive ? colors.primaryColor : colors.borderColor,
         borderRadius: BorderRadius.circular(4),
       ),
     );

@@ -4,14 +4,26 @@
 export async function initializeDatabase(pool: any): Promise<void> {
   const client = await pool.connect();
   try {
-    // Create users table
+    // Create customers table (separate from providers)
     await client.query(`
-      CREATE TABLE IF NOT EXISTS users (
+      CREATE TABLE IF NOT EXISTS customers (
         id VARCHAR(255) PRIMARY KEY,
         email VARCHAR(255) UNIQUE NOT NULL,
         password VARCHAR(255) NOT NULL,
         name VARCHAR(255) NOT NULL,
-        role VARCHAR(50) NOT NULL CHECK (role IN ('customer', 'provider')),
+        phone VARCHAR(50),
+        profile_picture TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create providers table (separate from customers)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS providers (
+        id VARCHAR(255) PRIMARY KEY,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        name VARCHAR(255) NOT NULL,
         phone VARCHAR(50),
         latitude DECIMAL(10, 8),
         longitude DECIMAL(11, 8),
@@ -21,38 +33,103 @@ export async function initializeDatabase(pool: any): Promise<void> {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    
-    // Add stripe_account_id column if it doesn't exist (for existing databases)
+
+    // Migrate existing users data to customers/providers if users table exists
     await client.query(`
       DO $$ 
       BEGIN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                      WHERE table_name='users' AND column_name='stripe_account_id') THEN
-          ALTER TABLE users ADD COLUMN stripe_account_id VARCHAR(255);
+        -- Check if users table exists and has data
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='users') THEN
+          -- Migrate customers
+          INSERT INTO customers (id, email, password, name, phone, profile_picture, created_at)
+          SELECT id, email, password, name, phone, profile_picture, created_at
+          FROM users
+          WHERE role = 'customer'
+          ON CONFLICT (id) DO NOTHING;
+
+          -- Migrate providers
+          INSERT INTO providers (id, email, password, name, phone, latitude, longitude, address, profile_picture, stripe_account_id, created_at)
+          SELECT id, email, password, name, phone, latitude, longitude, address, profile_picture, stripe_account_id, created_at
+          FROM users
+          WHERE role = 'provider'
+          ON CONFLICT (id) DO NOTHING;
         END IF;
       END $$;
     `);
 
-    // Create services table
+    // Create services table (references providers)
     await client.query(`
       CREATE TABLE IF NOT EXISTS services (
         id VARCHAR(255) PRIMARY KEY,
-        provider_id VARCHAR(255) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        provider_id VARCHAR(255) NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
         name VARCHAR(255) NOT NULL,
         description TEXT,
         duration INTEGER NOT NULL,
         price DECIMAL(10, 2) NOT NULL,
         category VARCHAR(100) NOT NULL,
+        capacity INTEGER NOT NULL DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    // Create appointments table
+    // Add capacity column to existing services table if it doesn't exist
+    await client.query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                      WHERE table_name='services' AND column_name='capacity') THEN
+          ALTER TABLE services ADD COLUMN capacity INTEGER NOT NULL DEFAULT 1;
+        END IF;
+      END $$;
+    `);
+
+    // Create availability table for provider schedules
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS availability (
+        id VARCHAR(255) PRIMARY KEY,
+        provider_id VARCHAR(255) NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+        day_of_week VARCHAR(20) NOT NULL CHECK (day_of_week IN ('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday')),
+        start_time TIME NOT NULL,
+        end_time TIME NOT NULL,
+        breaks TEXT[], -- Array of break time ranges like ['12:00-13:00']
+        is_available BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(provider_id, day_of_week)
+      )
+    `);
+
+    // Create index for availability queries
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_availability_provider_id ON availability(provider_id);
+    `);
+
+    // Create availability exceptions table (date-specific overrides)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS availability_exceptions (
+        id VARCHAR(255) PRIMARY KEY,
+        provider_id VARCHAR(255) NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+        date DATE NOT NULL,
+        start_time TIME,
+        end_time TIME,
+        breaks TEXT[],
+        is_available BOOLEAN NOT NULL DEFAULT true,
+        note TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(provider_id, date)
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_availability_exceptions_provider_date 
+        ON availability_exceptions(provider_id, date);
+    `);
+
+    // Create appointments table (references customers and providers separately)
     await client.query(`
       CREATE TABLE IF NOT EXISTS appointments (
         id VARCHAR(255) PRIMARY KEY,
-        customer_id VARCHAR(255) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        provider_id VARCHAR(255) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        customer_id VARCHAR(255) NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+        provider_id VARCHAR(255) NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
         service_id VARCHAR(255) NOT NULL REFERENCES services(id) ON DELETE CASCADE,
         date DATE NOT NULL,
         time TIME NOT NULL,
@@ -98,13 +175,13 @@ export async function initializeDatabase(pool: any): Promise<void> {
       END $$;
     `);
 
-    // Create reviews table
+    // Create reviews table (references customers and providers separately)
     await client.query(`
       CREATE TABLE IF NOT EXISTS reviews (
         id VARCHAR(255) PRIMARY KEY,
         appointment_id VARCHAR(255) NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
-        provider_id VARCHAR(255) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        customer_id VARCHAR(255) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        provider_id VARCHAR(255) NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+        customer_id VARCHAR(255) NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
         rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
         comment TEXT,
         photos TEXT[],
@@ -112,9 +189,75 @@ export async function initializeDatabase(pool: any): Promise<void> {
       )
     `);
 
+    // Update foreign keys if they still reference users table (for existing databases)
+    await client.query(`
+      DO $$ 
+      BEGIN
+        -- Drop old foreign keys if they exist and update to new tables
+        IF EXISTS (SELECT 1 FROM information_schema.table_constraints 
+                   WHERE constraint_name='services_provider_id_fkey' 
+                   AND table_name='services') THEN
+          ALTER TABLE services DROP CONSTRAINT services_provider_id_fkey;
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.table_constraints 
+                   WHERE constraint_name='appointments_customer_id_fkey' 
+                   AND table_name='appointments') THEN
+          ALTER TABLE appointments DROP CONSTRAINT appointments_customer_id_fkey;
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.table_constraints 
+                   WHERE constraint_name='appointments_provider_id_fkey' 
+                   AND table_name='appointments') THEN
+          ALTER TABLE appointments DROP CONSTRAINT appointments_provider_id_fkey;
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.table_constraints 
+                   WHERE constraint_name='reviews_provider_id_fkey' 
+                   AND table_name='reviews') THEN
+          ALTER TABLE reviews DROP CONSTRAINT reviews_provider_id_fkey;
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.table_constraints 
+                   WHERE constraint_name='reviews_customer_id_fkey' 
+                   AND table_name='reviews') THEN
+          ALTER TABLE reviews DROP CONSTRAINT reviews_customer_id_fkey;
+        END IF;
+
+        -- Add new foreign keys
+        IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints 
+                       WHERE constraint_name='services_provider_id_fkey' 
+                       AND table_name='services') THEN
+          ALTER TABLE services ADD CONSTRAINT services_provider_id_fkey 
+            FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints 
+                       WHERE constraint_name='appointments_customer_id_fkey' 
+                       AND table_name='appointments') THEN
+          ALTER TABLE appointments ADD CONSTRAINT appointments_customer_id_fkey 
+            FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints 
+                       WHERE constraint_name='appointments_provider_id_fkey' 
+                       AND table_name='appointments') THEN
+          ALTER TABLE appointments ADD CONSTRAINT appointments_provider_id_fkey 
+            FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints 
+                       WHERE constraint_name='reviews_provider_id_fkey' 
+                       AND table_name='reviews') THEN
+          ALTER TABLE reviews ADD CONSTRAINT reviews_provider_id_fkey 
+            FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints 
+                       WHERE constraint_name='reviews_customer_id_fkey' 
+                       AND table_name='reviews') THEN
+          ALTER TABLE reviews ADD CONSTRAINT reviews_customer_id_fkey 
+            FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE;
+        END IF;
+      END $$;
+    `);
+
     // Create indexes for better query performance
     await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+      CREATE INDEX IF NOT EXISTS idx_customers_email ON customers(email);
+      CREATE INDEX IF NOT EXISTS idx_providers_email ON providers(email);
       CREATE INDEX IF NOT EXISTS idx_services_provider_id ON services(provider_id);
       CREATE INDEX IF NOT EXISTS idx_appointments_customer_id ON appointments(customer_id);
       CREATE INDEX IF NOT EXISTS idx_appointments_provider_id ON appointments(provider_id);

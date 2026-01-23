@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/theme_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/layered_card.dart';
 import '../../widgets/fade_in_widget.dart';
@@ -45,18 +46,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
+    final themeProvider = Provider.of<ThemeProvider>(context);
     final user = authProvider.user;
+    final currentColors = AppTheme.getColors(themeProvider.currentTheme);
 
     return Scaffold(
-      backgroundColor: AppTheme.backgroundColor,
+      backgroundColor: currentColors.backgroundColor,
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.transparent,
-        title: const Text('Settings'),
+        title: Text('Settings'),
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppTheme.darkGradient,
+        decoration: BoxDecoration(
+          gradient: currentColors.backgroundGradient,
         ),
         child: ListView(
           padding: const EdgeInsets.all(16),
@@ -72,7 +75,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       width: 60,
                       height: 60,
                       decoration: BoxDecoration(
-                        gradient: AppTheme.primaryGradient,
+                        gradient: currentColors.primaryGradient,
                         shape: BoxShape.circle,
                       ),
                       child: user?.profilePicture != null
@@ -81,7 +84,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 imageUrl: user!.profilePicture!,
                                 fit: BoxFit.cover,
                                 placeholder: (context, url) => Container(
-                                  color: AppTheme.primaryColor.withOpacity(0.3),
+                                  color: currentColors.primaryColor.withOpacity(0.3),
                                   child: const Center(
                                     child: CircularProgressIndicator(),
                                   ),
@@ -89,7 +92,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 errorWidget: (context, url, error) => Center(
                                   child: Text(
                                     user.name.substring(0, 1).toUpperCase(),
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       color: Colors.white,
                                       fontSize: 24,
                                       fontWeight: FontWeight.bold,
@@ -101,7 +104,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           : Center(
                               child: Text(
                                 user?.name.substring(0, 1).toUpperCase() ?? 'U',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: Colors.white,
                                   fontSize: 24,
                                   fontWeight: FontWeight.bold,
@@ -116,10 +119,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         children: [
                           Text(
                             user?.name ?? 'User',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
-                              color: AppTheme.textPrimary,
+                              color: currentColors.textPrimary,
                             ),
                           ),
                           const SizedBox(height: 4),
@@ -127,7 +130,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             user?.email ?? '',
                             style: TextStyle(
                               fontSize: 14,
-                              color: AppTheme.textSecondary,
+                              color: currentColors.textSecondary,
                             ),
                           ),
                         ],
@@ -147,12 +150,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Notifications',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: AppTheme.textPrimary,
+                        color: currentColors.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 20),
@@ -169,7 +172,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       icon: Icons.notifications_outlined,
                     ),
                     if (_notificationsEnabled) ...[
-                      const Divider(height: 32),
+                      Divider(height: 32),
                       _buildSwitchTile(
                         title: 'Push Notifications',
                         subtitle: 'Get instant notifications on your device',
@@ -182,7 +185,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         },
                         icon: Icons.phone_android_outlined,
                       ),
-                      const Divider(height: 32),
+                      Divider(height: 32),
                       _buildSwitchTile(
                         title: 'Email Notifications',
                         subtitle: 'Receive updates via email',
@@ -195,7 +198,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         },
                         icon: Icons.email_outlined,
                       ),
-                      const Divider(height: 32),
+                      Divider(height: 32),
                       _buildSwitchTile(
                         title: 'Appointment Reminders',
                         subtitle: 'Get reminded before your appointments',
@@ -209,6 +212,69 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         icon: Icons.alarm_outlined,
                       ),
                     ],
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            // Theme Selection Section
+            FadeInWidget(
+              duration: const Duration(milliseconds: 250),
+              child: FloatingCard(
+                margin: EdgeInsets.zero,
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Appearance',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: currentColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Consumer<ThemeProvider>(
+                      builder: (context, themeProvider, _) {
+                        final currentThemeColors = AppTheme.getColors(themeProvider.currentTheme);
+                        return Column(
+                          children: [
+                            _buildThemeOption(
+                              context: context,
+                              themeProvider: themeProvider,
+                              theme: AppThemeMode.darkProfessional,
+                              colors: AppTheme.darkProfessional,
+                              currentColors: currentThemeColors,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildThemeOption(
+                              context: context,
+                              themeProvider: themeProvider,
+                              theme: AppThemeMode.darkElegant,
+                              colors: AppTheme.darkElegant,
+                              currentColors: currentThemeColors,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildThemeOption(
+                              context: context,
+                              themeProvider: themeProvider,
+                              theme: AppThemeMode.lightProfessional,
+                              colors: AppTheme.lightProfessional,
+                              currentColors: currentThemeColors,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildThemeOption(
+                              context: context,
+                              themeProvider: themeProvider,
+                              theme: AppThemeMode.lightWarm,
+                              colors: AppTheme.lightWarm,
+                              currentColors: currentThemeColors,
+                            ),
+                          ],
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),
@@ -229,7 +295,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         Navigator.pushNamed(context, '/edit-profile');
                       },
                     ),
-                    const Divider(height: 32),
+                    Divider(height: 32),
                     _buildSettingsTile(
                       title: 'Help & Support',
                       icon: Icons.help_outline,
@@ -237,7 +303,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         Navigator.pushNamed(context, '/help-support');
                       },
                     ),
-                    const Divider(height: 32),
+                    Divider(height: 32),
                     _buildSettingsTile(
                       title: 'About',
                       icon: Icons.info_outline,
@@ -250,7 +316,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             width: 60,
                             height: 60,
                             decoration: BoxDecoration(
-                              gradient: AppTheme.primaryGradient,
+                              gradient: currentColors.primaryGradient,
                               borderRadius: BorderRadius.circular(16),
                             ),
                             child: const Icon(
@@ -277,26 +343,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   final confirm = await showDialog<bool>(
                     context: context,
                     builder: (context) => AlertDialog(
-                      backgroundColor: AppTheme.cardColor,
-                      title: const Text(
+                      backgroundColor: currentColors.cardColor,
+                      title: Text(
                         'Logout',
-                        style: TextStyle(color: AppTheme.textPrimary),
+                        style: TextStyle(color: currentColors.textPrimary),
                       ),
-                      content: const Text(
+                      content: Text(
                         'Are you sure you want to logout?',
-                        style: TextStyle(color: AppTheme.textSecondary),
+                        style: TextStyle(color: currentColors.textSecondary),
                       ),
                       actions: [
                         TextButton(
                           onPressed: () => Navigator.pop(context, false),
-                          child: const Text('Cancel'),
+                          child: Text('Cancel'),
                         ),
                         TextButton(
                           onPressed: () => Navigator.pop(context, true),
                           style: TextButton.styleFrom(
-                            foregroundColor: AppTheme.errorColor,
+                            foregroundColor: currentColors.errorColor,
                           ),
-                          child: const Text('Logout'),
+                          child: Text('Logout'),
                         ),
                       ],
                     ),
@@ -320,14 +386,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     Icon(
                       Icons.logout,
-                      color: AppTheme.errorColor,
+                      color: currentColors.errorColor,
                       size: 20,
                     ),
                     const SizedBox(width: 12),
                     Text(
                       'Logout',
                       style: TextStyle(
-                        color: AppTheme.errorColor,
+                        color: currentColors.errorColor,
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
                       ),
@@ -337,6 +403,136 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             const SizedBox(height: 32),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildThemeOption({
+    required BuildContext context,
+    required ThemeProvider themeProvider,
+    required AppThemeMode theme,
+    required ThemeColors colors,
+    required ThemeColors currentColors,
+  }) {
+    final isSelected = themeProvider.currentTheme == theme;
+    
+    return InkWell(
+      onTap: () {
+        themeProvider.setTheme(theme);
+      },
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? colors.primaryColor.withOpacity(0.15)
+              : currentColors.surfaceColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? colors.primaryColor : currentColors.borderColor,
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            // Color Preview
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                gradient: colors.primaryGradient,
+                boxShadow: [
+                  BoxShadow(
+                    color: colors.primaryColor.withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        themeProvider.getThemeName(theme),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: isSelected
+                              ? colors.primaryColor
+                              : currentColors.textPrimary,
+                        ),
+                      ),
+                      if (theme == AppThemeMode.darkProfessional ||
+                          theme == AppThemeMode.darkElegant) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                            decoration: BoxDecoration(
+                            color: currentColors.textTertiary.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            'Dark',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w500,
+                              color: currentColors.textSecondary,
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (theme == AppThemeMode.lightProfessional ||
+                          theme == AppThemeMode.lightWarm) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colors.textTertiary.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            'Light',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w500,
+                              color: colors.textSecondary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    themeProvider.getThemeDescription(theme),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: currentColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isSelected)
+              Icon(
+                Icons.check_circle,
+                color: colors.primaryColor,
+                size: 24,
+              ),
           ],
         ),
       ),
@@ -355,12 +551,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: AppTheme.primaryColor.withOpacity(0.15),
+            color: Theme.of(context).colorScheme.primary.withOpacity(0.15),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(
             icon,
-            color: AppTheme.primaryColor,
+            color: Theme.of(context).colorScheme.primary,
             size: 20,
           ),
         ),
@@ -371,10 +567,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
-                  color: AppTheme.textPrimary,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
               const SizedBox(height: 4),
@@ -382,7 +578,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 subtitle,
                 style: TextStyle(
                   fontSize: 13,
-                  color: AppTheme.textSecondary,
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                 ),
               ),
             ],
@@ -391,7 +587,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Switch(
           value: value,
           onChanged: onChanged,
-          activeColor: AppTheme.primaryColor,
+          activeColor: Theme.of(context).colorScheme.primary,
         ),
       ],
     );
@@ -412,12 +608,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withOpacity(0.15),
+                color: Theme.of(context).colorScheme.primary.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
                 icon,
-                color: AppTheme.primaryColor,
+                color: Theme.of(context).colorScheme.primary,
                 size: 20,
               ),
             ),
@@ -425,16 +621,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Expanded(
               child: Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w500,
-                  color: AppTheme.textPrimary,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
             ),
             Icon(
               Icons.chevron_right,
-              color: AppTheme.textSecondary,
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
             ),
           ],
         ),

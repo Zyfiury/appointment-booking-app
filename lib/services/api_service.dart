@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/app_config.dart';
+import 'secure_storage_service.dart';
 
 class ApiService {
   // Production URL: https://accurate-solace-app22.up.railway.app/api
@@ -14,27 +15,23 @@ class ApiService {
     if (apiUrl.isNotEmpty) {
       return apiUrl;
     }
-    
-    // Check if production mode is enabled
-    if (AppConfig.isProduction && AppConfig.apiBaseUrl.isNotEmpty) {
-      return AppConfig.apiBaseUrl;
-    }
-    
-    // Default to production API (Railway deployment)
-    // To use local server, set: --dart-define=API_URL=http://10.0.2.2:5000/api
-    const productionUrl = 'https://accurate-solace-app22.up.railway.app/api';
-    if (productionUrl.isNotEmpty) {
-      return productionUrl;
-    }
-    
-    // Fallback to development URLs (only if production URL is not set)
-    if (kIsWeb) {
+
+    // Always use production API for now (can be changed back to localhost for local development)
+    // To use localhost: flutter run --dart-define=USE_LOCAL=true
+    const useLocal = String.fromEnvironment('USE_LOCAL', defaultValue: 'false');
+    if (useLocal == 'true') {
+      // Development URLs
+      if (kIsWeb) {
+        return 'http://localhost:5000/api';
+      }
+      if (Platform.isAndroid) {
+        return 'http://10.0.2.2:5000/api';
+      }
       return 'http://localhost:5000/api';
     }
-    if (Platform.isAndroid) {
-      return 'http://10.0.2.2:5000/api';
-    }
-    return 'http://localhost:5000/api';
+
+    // Production API URL
+    return 'https://accurate-solace-app22.up.railway.app/api';
   }
 
   late Dio _dio;
@@ -43,15 +40,17 @@ class ApiService {
     _dio = Dio(BaseOptions(
       baseUrl: ApiService.baseUrl,
       headers: {'Content-Type': 'application/json'},
-      connectTimeout: const Duration(seconds: 30),
-      receiveTimeout: const Duration(seconds: 30),
+      connectTimeout: const Duration(seconds: 30), // Connection timeout
+      receiveTimeout: const Duration(seconds: 30), // Response timeout
+      sendTimeout: const Duration(seconds: 30), // Send timeout
+      validateStatus: (status) => status != null && status < 400, // Only accept success status codes (< 400)
     ));
 
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
         debugPrint('🌐 API Request: ${options.method} ${options.baseUrl}${options.path}');
-        final prefs = await SharedPreferences.getInstance();
-        final token = prefs.getString('token');
+        // Use secure storage for token
+        final token = await SecureStorageService.getToken();
         if (token != null) {
           options.headers['Authorization'] = 'Bearer $token';
         }
@@ -63,12 +62,22 @@ class ApiService {
       },
       onError: (error, handler) {
         debugPrint('❌ API Error: ${error.type} - ${error.message}');
+        debugPrint('   URL: ${error.requestOptions.baseUrl}${error.requestOptions.path}');
         if (error.response != null) {
           debugPrint('   Status: ${error.response?.statusCode}');
           debugPrint('   Data: ${error.response?.data}');
+        } else {
+          // Connection/timeout errors
+          if (error.type == DioExceptionType.connectionTimeout ||
+              error.type == DioExceptionType.receiveTimeout ||
+              error.type == DioExceptionType.sendTimeout) {
+            debugPrint('   ⚠️ Connection timeout - Check network or server status');
+            debugPrint('   Current API URL: ${ApiService.baseUrl}');
+          }
         }
         if (error.response?.statusCode == 401) {
-          // Handle unauthorized - could trigger logout
+          // Token is invalid/expired - clear secure storage
+          SecureStorageService.clearAll();
         }
         return handler.next(error);
       },

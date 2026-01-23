@@ -1,194 +1,146 @@
-import express, { Request, Response } from 'express';
+import express, { Response } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { db } from '../data/database';
-import { validate, schemas } from '../middleware/validation';
-import { paginate, parsePagination } from '../utils/pagination';
-import { calculateCancellationFee } from '../utils/cancellation';
-import { getIdempotencyKey, getIdempotencyResult, setIdempotencyResult } from '../utils/idempotency';
-import { auditLog } from '../utils/audit';
 
 const router = express.Router();
 
-router.get('/', authenticate, (req: AuthRequest, res: Response) => {
+function toMinutes(hhmm: string): number | null {
+  const parts = hhmm.split(':');
+  if (parts.length < 2) return null;
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+  return h * 60 + m;
+}
+
+function minutesToTime(mins: number): string {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}`;
+}
+
+router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    // CRITICAL: Ensure proper data isolation - filter by user role
-    if (!req.userId || !req.userRole) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-
-    const appointments = db.getAppointments(req.userId, req.userRole);
-    
-    // Additional safety check: Verify appointments belong to the user
-    const filteredAppointments = appointments.filter(apt => {
-      if (req.userRole === 'customer') {
-        return apt.customerId === req.userId;
-      } else if (req.userRole === 'provider') {
-        return apt.providerId === req.userId;
-      }
-      return false;
-    });
-
-    // Map appointments with details first
-    const appointmentsWithDetails = filteredAppointments.map(apt => {
-      const customer = db.getUserById(apt.customerId);
-      const provider = db.getUserById(apt.providerId);
-      const service = db.getServiceById(apt.serviceId);
+    const appointments = await db.getAppointments(req.userId!, req.userRole!);
+    const appointmentsWithDetails = await Promise.all(appointments.map(async (apt) => {
+      const customer = await db.getUserById(apt.customerId);
+      const provider = await db.getUserById(apt.providerId);
+      const service = await db.getServiceById(apt.serviceId);
       return {
         ...apt,
         customer: customer ? { id: customer.id, name: customer.name, email: customer.email } : null,
         provider: provider ? { id: provider.id, name: provider.name, email: provider.email } : null,
         service: service ? { id: service.id, name: service.name, duration: service.duration, price: service.price } : null,
       };
-    });
-
-    // Check if pagination is requested (backward compatible)
-    const hasPagination = req.query.page || req.query.limit;
-    if (hasPagination) {
-      const pagination = parsePagination(req.query);
-      const paginated = paginate(appointmentsWithDetails, pagination);
-      res.json({
-        data: paginated.data,
-        pagination: paginated.pagination,
-      });
-    } else {
-      // Return plain list for backward compatibility
-      res.json(appointmentsWithDetails);
-    }
+    }));
+    res.json(appointmentsWithDetails);
   } catch (error) {
-    console.error('Get appointments error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// Get available time slots for booking (must be before /:id route)
-router.get('/available-slots', async (req: express.Request, res: Response) => {
+// Get available slots for a provider/service/date (includes availability + breaks + current bookings + capacity)
+router.get('/available-slots', async (req, res: Response) => {
   try {
-    const { providerId, serviceId, date, interval = '30' } = req.query as {
-      providerId?: string;
-      serviceId?: string;
-      date?: string;
-      interval?: string;
-    };
+    const providerId = req.query.providerId as string | undefined;
+    const serviceId = req.query.serviceId as string | undefined;
+    const date = req.query.date as string | undefined; // yyyy-mm-dd
+    const interval = req.query.interval ? parseInt(req.query.interval as string, 10) : 30;
 
     if (!providerId || !serviceId || !date) {
-      return res.status(400).json({ error: 'Missing required fields: providerId, serviceId, date' });
+      return res.status(400).json({ error: 'Missing required query params: providerId, serviceId, date' });
+    }
+    if (Number.isNaN(interval) || interval < 5 || interval > 120) {
+      return res.status(400).json({ error: 'interval must be between 5 and 120 minutes' });
     }
 
-    const service = db.getServiceById(serviceId as string);
-    if (!service) {
-      return res.status(404).json({ error: 'Service not found' });
+    const service = await db.getServiceById(serviceId);
+    if (!service) return res.status(404).json({ error: 'Service not found' });
+    if (service.providerId !== providerId) {
+      return res.status(400).json({ error: 'Service does not belong to provider' });
     }
 
-    // Get provider availability
-    const availability = db.getAvailability(providerId as string);
-    const dateObj = new Date(date as string);
-    const dayOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][dateObj.getDay()];
-    
-    const dayAvailability = availability.find(a => a.dayOfWeek === dayOfWeek && a.isAvailable);
-    if (!dayAvailability) {
-      return res.json([]); // No availability for this day
+    const dayDate = new Date(`${date}T00:00:00`);
+    if (isNaN(dayDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid date format. Expected yyyy-mm-dd' });
     }
 
-    // Check for exceptions
-    const exceptions = db.getAvailabilityExceptions(providerId as string);
-    const dateStr = date as string;
-    const exception = exceptions.find(e => e.date === dateStr);
-    
-    if (exception && !exception.isAvailable) {
-      return res.json([]); // Day is blocked
+    const dayOfWeek = dayDate.toLocaleDateString('en-US', { weekday: 'lowercase' });
+    // Prefer date-specific exceptions if present
+    const exception = await db.getAvailabilityExceptionByDate(providerId, date);
+    if (exception && exception.isAvailable === false) {
+      return res.json([] as string[]);
     }
 
-    // Use exception times if available, otherwise use regular availability
-    const startTime = exception?.startTime || dayAvailability.startTime;
-    const endTime = exception?.endTime || dayAvailability.endTime;
-    const breaks = exception?.breaks || dayAvailability.breaks || [];
-
-    // Parse times
-    const [startHour, startMin] = startTime.split(':').map(Number);
-    const [endHour, endMin] = endTime.split(':').map(Number);
-    const startMinutes = startHour * 60 + startMin;
-    const endMinutes = endHour * 60 + endMin;
-    const slotInterval = parseInt(interval as string) || 30;
-    const serviceDuration = service.duration || 30;
-
-    // Get existing appointments for this date
-    const existingAppointments = db.getAppointments(providerId as string, 'provider')
-      .filter(apt => apt.date === dateStr && apt.status !== 'cancelled');
-
-    // Generate available slots
-    const availableSlots: string[] = [];
-    let currentMinutes = startMinutes;
-
-    while (currentMinutes + serviceDuration <= endMinutes) {
-      const slotEnd = currentMinutes + serviceDuration;
-      const slotTime = `${Math.floor(currentMinutes / 60).toString().padStart(2, '0')}:${(currentMinutes % 60).toString().padStart(2, '0')}`;
-
-      // Check if slot conflicts with break
-      let conflictsWithBreak = false;
-      for (const breakTime of breaks) {
-        const [breakStart, breakEnd] = breakTime.split('-');
-        const [bsh, bsm] = breakStart.split(':').map(Number);
-        const [beh, bem] = breakEnd.split(':').map(Number);
-        const breakStartMinutes = bsh * 60 + bsm;
-        const breakEndMinutes = beh * 60 + bem;
-
-        if (currentMinutes < breakEndMinutes && slotEnd > breakStartMinutes) {
-          conflictsWithBreak = true;
-          break;
-        }
+    const providerAvailability = await db.getAvailabilityByDay(providerId, dayOfWeek);
+    if (!providerAvailability || !providerAvailability.isAvailable) {
+      // No weekly schedule; but if exception exists and isAvailable=true, we still allow it
+      if (!exception || exception.isAvailable !== true) {
+        return res.json([] as string[]);
       }
-
-      // Check if slot conflicts with existing appointment
-      let conflictsWithAppointment = false;
-      for (const apt of existingAppointments) {
-        const [aptHour, aptMin] = apt.time.split(':').map(Number);
-        const aptStartMinutes = aptHour * 60 + aptMin;
-        const aptService = db.getServiceById(apt.serviceId);
-        const aptDuration = aptService?.duration || 30;
-        const aptEndMinutes = aptStartMinutes + aptDuration;
-
-        if (currentMinutes < aptEndMinutes && slotEnd > aptStartMinutes) {
-          conflictsWithAppointment = true;
-          break;
-        }
-      }
-
-      // Check capacity
-      let atCapacity = false;
-      const serviceCapacity = service.capacity || 1;
-      if (serviceCapacity > 1) {
-        const concurrentAppointments = existingAppointments.filter(apt => {
-          const [aptHour, aptMin] = apt.time.split(':').map(Number);
-          const aptStartMinutes = aptHour * 60 + aptMin;
-          const aptService = db.getServiceById(apt.serviceId);
-          const aptDuration = aptService?.duration || 30;
-          const aptEndMinutes = aptStartMinutes + aptDuration;
-          return currentMinutes < aptEndMinutes && slotEnd > aptStartMinutes;
-        });
-        atCapacity = concurrentAppointments.length >= serviceCapacity;
-      }
-
-      // Exclude slots with active reservation holds (prevents double-booking)
-      const activeHolds = db.getReservationHolds(providerId as string, dateStr, slotTime);
-      const hasHold = activeHolds.length > 0;
-
-      if (!conflictsWithBreak && !conflictsWithAppointment && !atCapacity && !hasHold) {
-        availableSlots.push(slotTime);
-      }
-
-      currentMinutes += slotInterval;
     }
 
-    res.json(availableSlots);
+    const effectiveStart = exception?.startTime || providerAvailability?.startTime;
+    const effectiveEnd = exception?.endTime || providerAvailability?.endTime;
+    const effectiveBreaks = (exception && exception.isAvailable === true)
+      ? (exception.breaks || [])
+      : (providerAvailability?.breaks || []);
+
+    if (!effectiveStart || !effectiveEnd) return res.json([] as string[]);
+
+    const startMinutes = toMinutes(effectiveStart);
+    const endMinutes = toMinutes(effectiveEnd);
+    if (startMinutes === null || endMinutes === null || endMinutes <= startMinutes) {
+      return res.json([] as string[]);
+    }
+
+    const breakRanges: Array<[number, number]> = [];
+    for (const b of effectiveBreaks) {
+      const [bs, be] = b.split('-');
+      const bsm = bs ? toMinutes(bs) : null;
+      const bem = be ? toMinutes(be) : null;
+      if (bsm !== null && bem !== null && bem > bsm) {
+        breakRanges.push([bsm, bem]);
+      }
+    }
+
+    // Fetch existing appointments for capacity checks (same provider, same date, same service)
+    const existing = await db.getAppointments(providerId, 'provider');
+    const relevant = existing.filter(a => a.status !== 'cancelled' && a.serviceId === serviceId && a.date === date);
+
+    const slots: string[] = [];
+    for (let t = startMinutes; t + service.duration <= endMinutes; t += interval) {
+      const slotEnd = t + service.duration;
+
+      // Break conflict
+      const conflictsBreak = breakRanges.some(([bs, be]) => t < be && slotEnd > bs);
+      if (conflictsBreak) continue;
+
+      // Capacity conflict
+      const slotStartDt = new Date(`${date}T${minutesToTime(t)}`);
+      const slotEndDt = new Date(slotStartDt.getTime() + service.duration * 60000);
+      const concurrent = relevant.filter(a => {
+        const aStart = new Date(`${a.date}T${a.time}`);
+        const aEnd = new Date(aStart.getTime() + service.duration * 60000);
+        return slotStartDt < aEnd && slotEndDt > aStart;
+      }).length;
+
+      if (concurrent >= (service.capacity || 1)) continue;
+
+      slots.push(minutesToTime(t));
+    }
+
+    res.json(slots);
   } catch (error) {
     console.error('Error computing available slots:', error);
     res.status(500).json({ error: 'Failed to compute available slots' });
   }
 });
 
-router.get('/:id', authenticate, (req: AuthRequest, res: Response) => {
+router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const appointment = db.getAppointmentById(req.params.id);
+    const appointment = await db.getAppointmentById(req.params.id);
     if (!appointment) {
       return res.status(404).json({ error: 'Appointment not found' });
     }
@@ -197,9 +149,9 @@ router.get('/:id', authenticate, (req: AuthRequest, res: Response) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    const customer = db.getUserById(appointment.customerId);
-    const provider = db.getUserById(appointment.providerId);
-    const service = db.getServiceById(appointment.serviceId);
+    const customer = await db.getUserById(appointment.customerId);
+    const provider = await db.getUserById(appointment.providerId);
+    const service = await db.getServiceById(appointment.serviceId);
 
     res.json({
       ...appointment,
@@ -212,255 +164,288 @@ router.get('/:id', authenticate, (req: AuthRequest, res: Response) => {
   }
 });
 
-// Create reservation hold (before payment)
-router.post('/hold', authenticate, (req: AuthRequest, res: Response) => {
+router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { providerId, serviceId, date, time } = req.body;
+    const { providerId, serviceId, date, time, notes } = req.body;
 
+    // Validate required fields
     if (!providerId || !serviceId || !date || !time) {
-      return res.status(400).json({ error: 'Missing required fields' });
+      return res.status(400).json({ error: 'Missing required fields: providerId, serviceId, date, and time are required' });
     }
 
-    if (req.userRole !== 'customer') {
-      return res.status(403).json({ error: 'Only customers can create holds' });
-    }
-
-    const service = db.getServiceById(serviceId);
-    if (!service) {
-      return res.status(404).json({ error: 'Service not found' });
-    }
-
-    // Check for active holds (excluding expired ones)
-    const activeHolds = db.getReservationHolds(providerId, date, time);
-    if (activeHolds.length > 0) {
-      return res.status(409).json({ error: 'Time slot is currently being reserved' });
-    }
-
-    // Check for existing appointments
-    const existingAppointments = db.getAppointments(providerId, 'provider');
-    const appointmentDateTime = new Date(`${date}T${time}`);
-    const conflict = existingAppointments.find(apt => {
-      if (apt.status === 'cancelled') return false;
-      const aptDateTime = new Date(`${apt.date}T${apt.time}`);
-      const serviceDuration = service.duration || 60;
-      const aptEndTime = new Date(aptDateTime.getTime() + serviceDuration * 60000);
-      return appointmentDateTime < aptEndTime && new Date(appointmentDateTime.getTime() + serviceDuration * 60000) > aptDateTime;
-    });
-
-    if (conflict) {
-      return res.status(400).json({ error: 'Time slot already booked' });
-    }
-
-    // Check capacity
-    const serviceCapacity = service.capacity || 1;
-    const concurrentAppointments = existingAppointments.filter(apt => {
-      if (apt.status === 'cancelled') return false;
-      const aptDateTime = new Date(`${apt.date}T${apt.time}`);
-      const serviceDuration = service.duration || 60;
-      const aptEndTime = new Date(aptDateTime.getTime() + serviceDuration * 60000);
-      return appointmentDateTime < aptEndTime && new Date(appointmentDateTime.getTime() + serviceDuration * 60000) > aptDateTime;
-    });
-
-    if (concurrentAppointments.length >= serviceCapacity) {
-      return res.status(400).json({ error: 'Service capacity reached for this time slot' });
-    }
-
-    // Create hold (expires in 10 minutes)
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-    const hold = db.createReservationHold({
-      providerId,
-      serviceId,
-      date,
-      time,
-      customerId: req.userId!,
-      expiresAt,
-    });
-
-    res.status(201).json(hold);
-  } catch (error) {
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// Release reservation hold
-router.delete('/hold/:id', authenticate, (req: AuthRequest, res: Response) => {
-  try {
-    const holdId = req.params.id;
-    // In production, verify the hold belongs to the user
-    const deleted = db.deleteReservationHold(holdId);
-    if (!deleted) {
-      return res.status(404).json({ error: 'Hold not found' });
-    }
-    res.json({ message: 'Hold released' });
-  } catch (error) {
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-router.post('/', authenticate, validate(schemas.createAppointment), (req: AuthRequest, res: Response) => {
-  const idemKey = getIdempotencyKey(req);
-  try {
-    if (idemKey) {
-      const cached = getIdempotencyResult(idemKey);
-      if (cached) return res.status(cached.status).json(cached.body);
-    }
-
-    const { providerId, serviceId, date, time, notes, holdId } = req.body;
-
+    // Only customers can book appointments
     if (req.userRole !== 'customer') {
       return res.status(403).json({ error: 'Only customers can book appointments' });
     }
 
-    const service = db.getServiceById(serviceId);
+    // Validate date format and ensure it's in the future
+    const appointmentDate = new Date(`${date}T${time}`);
+    if (isNaN(appointmentDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid date or time format' });
+    }
+
+    const now = new Date();
+    if (appointmentDate <= now) {
+      return res.status(400).json({ error: 'Appointment must be scheduled for a future date and time' });
+    }
+
+    // Validate that appointment is not too far in the future (e.g., 1 year)
+    const oneYearFromNow = new Date();
+    oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
+    if (appointmentDate > oneYearFromNow) {
+      return res.status(400).json({ error: 'Appointments cannot be scheduled more than 1 year in advance' });
+    }
+
+    // Validate notes length if provided
+    if (notes !== undefined && notes !== null && typeof notes === 'string' && notes.length > 1000) {
+      return res.status(400).json({ error: 'Notes cannot exceed 1000 characters' });
+    }
+
+    // Get and validate service
+    const service = await db.getServiceById(serviceId);
     if (!service) {
       return res.status(404).json({ error: 'Service not found' });
     }
 
-    // CRITICAL: Double-check service ownership - prevent cross-provider booking
+    // Verify service belongs to the specified provider
     if (service.providerId !== providerId) {
+      return res.status(400).json({ error: 'Service does not belong to the specified provider' });
+    }
+
+    // Verify provider exists
+    const provider = await db.getUserById(providerId);
+    if (!provider || provider.role !== 'provider') {
+      return res.status(404).json({ error: 'Provider not found' });
+    }
+
+    // Check provider availability for the day
+    const dayOfWeek = appointmentDate.toLocaleDateString('en-US', { weekday: 'lowercase' });
+    const providerAvailability = await db.getAvailabilityByDay(providerId, dayOfWeek);
+    
+    if (!providerAvailability || !providerAvailability.isAvailable) {
+      return res.status(400).json({ error: 'Provider is not available on this day' });
+    }
+
+    // Check if appointment time is within working hours
+    const [apptHour, apptMin] = time.split(':').map(Number);
+    const [startHour, startMin] = providerAvailability.startTime.split(':').map(Number);
+    const [endHour, endMin] = providerAvailability.endTime.split(':').map(Number);
+    const apptMinutes = apptHour * 60 + apptMin;
+    const startMinutes = startHour * 60 + startMin;
+    const endMinutes = endHour * 60 + endMin;
+    const serviceEndMinutes = apptMinutes + service.duration;
+
+    if (apptMinutes < startMinutes || serviceEndMinutes > endMinutes) {
       return res.status(400).json({ 
-        error: 'Service does not belong to the selected provider. Please select a valid service.' 
+        error: `Appointment time must be between ${providerAvailability.startTime} and ${providerAvailability.endTime}` 
       });
     }
 
-    // Additional safety: Verify service is active
-    if (service.isActive === false) {
-      return res.status(400).json({ error: 'This service is currently unavailable' });
-    }
+    // Check if appointment conflicts with breaks
+    for (const breakTime of providerAvailability.breaks) {
+      const [breakStart, breakEnd] = breakTime.split('-');
+      const [breakStartHour, breakStartMin] = breakStart.split(':').map(Number);
+      const [breakEndHour, breakEndMin] = breakEnd.split(':').map(Number);
+      const breakStartMinutes = breakStartHour * 60 + breakStartMin;
+      const breakEndMinutes = breakEndHour * 60 + breakEndMin;
 
-    // If holdId provided, verify and release it
-    if (holdId) {
-      const activeHolds = db.getReservationHolds(providerId, date, time);
-      const hold = activeHolds.find(h => h.id === holdId && h.customerId === req.userId);
-      if (!hold) {
-        return res.status(400).json({ error: 'Invalid or expired reservation hold' });
-      }
-      // Release the hold
-      db.deleteReservationHold(holdId);
-    } else {
-      // Check for active holds
-      const activeHolds = db.getReservationHolds(providerId, date, time);
-      if (activeHolds.length > 0) {
-        return res.status(409).json({ error: 'Time slot is currently being reserved' });
+      if ((apptMinutes >= breakStartMinutes && apptMinutes < breakEndMinutes) ||
+          (serviceEndMinutes > breakStartMinutes && serviceEndMinutes <= breakEndMinutes) ||
+          (apptMinutes < breakStartMinutes && serviceEndMinutes > breakEndMinutes)) {
+        return res.status(400).json({ error: `This time conflicts with provider's break: ${breakTime}` });
       }
     }
 
-    // Check for conflicts
-    const existingAppointments = db.getAppointments(providerId, 'provider');
+    // Check service capacity - count concurrent appointments at the same time
+    const existingAppointments = await db.getAppointments(providerId, 'provider');
     const appointmentDateTime = new Date(`${date}T${time}`);
-    const conflict = existingAppointments.find(apt => {
-      if (apt.status === 'cancelled') return false;
-      const aptDateTime = new Date(`${apt.date}T${apt.time}`);
-      const serviceDuration = service.duration || 60;
-      const aptEndTime = new Date(aptDateTime.getTime() + serviceDuration * 60000);
-      return appointmentDateTime < aptEndTime && new Date(appointmentDateTime.getTime() + serviceDuration * 60000) > aptDateTime;
-    });
-
-    if (conflict) {
-      return res.status(400).json({ error: 'Time slot already booked' });
-    }
-
-    // Check capacity
-    const serviceCapacity = service.capacity || 1;
+    const serviceEndTime = new Date(appointmentDateTime.getTime() + service.duration * 60000);
+    
+    // Count appointments that overlap with this time slot (excluding cancelled)
     const concurrentAppointments = existingAppointments.filter(apt => {
-      if (apt.status === 'cancelled') return false;
+      if (apt.status === 'cancelled' || apt.serviceId !== serviceId) return false;
       const aptDateTime = new Date(`${apt.date}T${apt.time}`);
-      const serviceDuration = service.duration || 60;
-      const aptEndTime = new Date(aptDateTime.getTime() + serviceDuration * 60000);
-      return appointmentDateTime < aptEndTime && new Date(appointmentDateTime.getTime() + serviceDuration * 60000) > aptDateTime;
+      const aptService = service; // We know it's the same service
+      const aptEndTime = new Date(aptDateTime.getTime() + aptService.duration * 60000);
+      
+      // Check if appointments overlap
+      return appointmentDateTime < aptEndTime && serviceEndTime > aptDateTime;
     });
 
-    if (concurrentAppointments.length >= serviceCapacity) {
-      return res.status(400).json({ error: 'Service capacity reached for this time slot' });
+    // Check if capacity is exceeded
+    if (concurrentAppointments.length >= service.capacity) {
+      return res.status(400).json({ 
+        error: `This time slot is full. Service capacity: ${service.capacity} concurrent appointment(s). Please choose another time.` 
+      });
     }
 
-    const appointment = db.createAppointment({
+    const appointment = await db.createAppointment({
       customerId: req.userId!,
       providerId,
       serviceId,
       date,
       time,
       status: 'pending',
-      notes,
+      notes: notes ? notes.trim() : null,
     });
 
-    auditLog({
-      action: 'appointment.created',
-      entity: 'appointment',
-      entityId: appointment.id,
-      userId: req.userId!,
-      meta: { providerId, serviceId, date, time },
-    });
+    const customer = await db.getUserById(appointment.customerId);
+    const provider = await db.getUserById(appointment.providerId);
 
-    const customer = db.getUserById(appointment.customerId);
-    const provider = db.getUserById(appointment.providerId);
-
-    const payload = {
+    res.status(201).json({
       ...appointment,
       customer: customer ? { id: customer.id, name: customer.name, email: customer.email } : null,
       provider: provider ? { id: provider.id, name: provider.name, email: provider.email } : null,
       service,
-    };
-    if (idemKey) setIdempotencyResult(idemKey, 201, payload);
-    res.status(201).json(payload);
+    });
   } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    console.error('Error creating appointment:', error);
+    res.status(500).json({ error: 'Failed to create appointment. Please try again.' });
   }
 });
 
-router.patch('/:id', authenticate, validate(schemas.updateAppointment), (req: AuthRequest, res: Response) => {
+router.patch('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const appointment = db.getAppointmentById(req.params.id);
+    const appointment = await db.getAppointmentById(req.params.id);
     if (!appointment) {
       return res.status(404).json({ error: 'Appointment not found' });
     }
 
+    // Security check: Only customer or provider can update their appointments
     if (appointment.customerId !== req.userId && appointment.providerId !== req.userId) {
-      return res.status(403).json({ error: 'Access denied' });
+      return res.status(403).json({ error: 'You can only update your own appointments' });
     }
 
     const { status, notes } = req.body;
-
-    // If cancelling, calculate cancellation fee
-    if (status === 'cancelled' && appointment.status !== 'cancelled') {
-      const service = db.getServiceById(appointment.serviceId);
-      const provider = db.getUserById(appointment.providerId);
-      const payments = db.getPayments();
-      const payment = payments.find(p => p.appointmentId === appointment.id && p.status === 'completed');
-      
-      const cancellation = calculateCancellationFee(appointment, service || null, provider || null, payment || null);
-      
-      // Update payment if there's a cancellation fee
-      if (payment && cancellation.cancellationFee > 0) {
-        db.updatePayment(payment.id, {
-          status: 'refunded',
-        });
-      }
-    }
     const updates: any = {};
 
-    if (status && ['pending', 'confirmed', 'cancelled', 'completed'].includes(status)) {
-      updates.status = status;
-      auditLog({
-        action: `appointment.${status}` as 'appointment.confirmed' | 'appointment.cancelled' | 'appointment.completed',
-        entity: 'appointment',
-        entityId: appointment.id,
-        userId: req.userId!,
-        meta: { previousStatus: appointment.status, newStatus: status },
-      });
-    }
-    if (notes !== undefined) {
-      updates.notes = notes;
+    // Customer reschedule (only pending appointments can be rescheduled by customer)
+    const newDate = req.body.date as string | undefined;
+    const newTime = req.body.time as string | undefined;
+    if (newDate !== undefined || newTime !== undefined) {
+      if (req.userRole !== 'customer') {
+        return res.status(403).json({ error: 'Only customers can reschedule' });
+      }
+      if (appointment.customerId !== req.userId) {
+        return res.status(403).json({ error: 'You can only reschedule your own appointments' });
+      }
+      if (appointment.status !== 'pending') {
+        return res.status(400).json({ error: 'Only pending appointments can be rescheduled' });
+      }
+      if (!newDate || !newTime) {
+        return res.status(400).json({ error: 'Both date and time are required to reschedule' });
+      }
+
+      // Validate date/time and enforce availability + capacity using the same rules as booking
+      const service = await db.getServiceById(appointment.serviceId);
+      if (!service) return res.status(404).json({ error: 'Service not found' });
+
+      const apptDate = new Date(`${newDate}T${newTime}`);
+      if (isNaN(apptDate.getTime())) {
+        return res.status(400).json({ error: 'Invalid date or time format' });
+      }
+      const now = new Date();
+      if (apptDate <= now) {
+        return res.status(400).json({ error: 'Appointment must be scheduled for a future date and time' });
+      }
+
+      const dayOfWeek = apptDate.toLocaleDateString('en-US', { weekday: 'lowercase' });
+      const exception = await db.getAvailabilityExceptionByDate(appointment.providerId, newDate);
+      if (exception && exception.isAvailable === false) {
+        return res.status(400).json({ error: 'Provider is not available on this date' });
+      }
+      const providerAvailability = await db.getAvailabilityByDay(appointment.providerId, dayOfWeek);
+      if (!providerAvailability || !providerAvailability.isAvailable) {
+        if (!exception || exception.isAvailable !== true) {
+          return res.status(400).json({ error: 'Provider is not available on this day' });
+        }
+      }
+
+      const effectiveStart = exception?.startTime || providerAvailability?.startTime;
+      const effectiveEnd = exception?.endTime || providerAvailability?.endTime;
+      const effectiveBreaks = (exception && exception.isAvailable === true)
+        ? (exception.breaks || [])
+        : (providerAvailability?.breaks || []);
+      if (!effectiveStart || !effectiveEnd) {
+        return res.status(400).json({ error: 'Provider availability is not configured for this date' });
+      }
+
+      const [apptHour, apptMin] = newTime.split(':').map(Number);
+      const [startHour, startMin] = effectiveStart.split(':').map(Number);
+      const [endHour, endMin] = effectiveEnd.split(':').map(Number);
+      const apptMinutes = apptHour * 60 + apptMin;
+      const startMinutes = startHour * 60 + startMin;
+      const endMinutes = endHour * 60 + endMin;
+      const serviceEndMinutes = apptMinutes + service.duration;
+      if (apptMinutes < startMinutes || serviceEndMinutes > endMinutes) {
+        return res.status(400).json({ error: `Appointment time must be between ${effectiveStart} and ${effectiveEnd}` });
+      }
+      for (const breakTime of effectiveBreaks) {
+        const [breakStart, breakEnd] = breakTime.split('-');
+        const [bsh, bsm] = breakStart.split(':').map(Number);
+        const [beh, bem] = breakEnd.split(':').map(Number);
+        const bs = bsh * 60 + bsm;
+        const be = beh * 60 + bem;
+        if (apptMinutes < be && serviceEndMinutes > bs) {
+          return res.status(400).json({ error: `This time conflicts with provider's break: ${breakTime}` });
+        }
+      }
+
+      // Capacity check (exclude this appointment itself)
+      const existingAppointments = await db.getAppointments(appointment.providerId, 'provider');
+      const startDt = new Date(`${newDate}T${newTime}`);
+      const endDt = new Date(startDt.getTime() + service.duration * 60000);
+      const concurrent = existingAppointments.filter(a => {
+        if (a.status === 'cancelled') return false;
+        if (a.serviceId !== appointment.serviceId) return false;
+        if (a.id === appointment.id) return false;
+        const aStart = new Date(`${a.date}T${a.time}`);
+        const aEnd = new Date(aStart.getTime() + service.duration * 60000);
+        return startDt < aEnd && endDt > aStart;
+      }).length;
+      if (concurrent >= (service.capacity || 1)) {
+        return res.status(400).json({ error: 'This slot is full. Please choose another time.' });
+      }
+
+      updates.date = newDate;
+      updates.time = newTime;
     }
 
-    const updated = db.updateAppointment(req.params.id, updates);
+    // Validate status if provided
+    if (status !== undefined) {
+      if (!['pending', 'confirmed', 'cancelled', 'completed'].includes(status)) {
+        return res.status(400).json({ error: 'Invalid status. Must be one of: pending, confirmed, cancelled, completed' });
+      }
+      
+      // Business logic: Only providers can confirm appointments
+      if (status === 'confirmed' && req.userRole !== 'provider') {
+        return res.status(403).json({ error: 'Only providers can confirm appointments' });
+      }
+      
+      // Business logic: Only providers can mark as completed
+      if (status === 'completed' && req.userRole !== 'provider') {
+        return res.status(403).json({ error: 'Only providers can mark appointments as completed' });
+      }
+      
+      updates.status = status;
+    }
+
+    // Validate notes if provided
+    if (notes !== undefined) {
+      if (notes !== null && typeof notes === 'string' && notes.length > 1000) {
+        return res.status(400).json({ error: 'Notes cannot exceed 1000 characters' });
+      }
+      updates.notes = notes ? notes.trim() : null;
+    }
+
+    const updated = await db.updateAppointment(req.params.id, updates);
     if (!updated) {
       return res.status(404).json({ error: 'Appointment not found' });
     }
 
-    const customer = db.getUserById(updated.customerId);
-    const provider = db.getUserById(updated.providerId);
-    const service = db.getServiceById(updated.serviceId);
+    const customer = await db.getUserById(updated.customerId);
+    const provider = await db.getUserById(updated.providerId);
+    const service = await db.getServiceById(updated.serviceId);
 
     res.json({
       ...updated,
@@ -469,13 +454,14 @@ router.patch('/:id', authenticate, validate(schemas.updateAppointment), (req: Au
       service: service || null,
     });
   } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    console.error('Error updating appointment:', error);
+    res.status(500).json({ error: 'Failed to update appointment. Please try again.' });
   }
 });
 
-router.delete('/:id', authenticate, (req: AuthRequest, res: Response) => {
+router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const appointment = db.getAppointmentById(req.params.id);
+    const appointment = await db.getAppointmentById(req.params.id);
     if (!appointment) {
       return res.status(404).json({ error: 'Appointment not found' });
     }
@@ -484,47 +470,8 @@ router.delete('/:id', authenticate, (req: AuthRequest, res: Response) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    // Calculate cancellation fee using utility function
-    const service = db.getServiceById(appointment.serviceId);
-    const provider = db.getUserById(appointment.providerId);
-    const payments = db.getPayments();
-    const payment = payments.find(p => p.appointmentId === appointment.id && p.status === 'completed');
-    
-    const cancellation = calculateCancellationFee(
-      appointment,
-      service || null,
-      provider || null,
-      payment || null
-    );
-
-    // Update payment if there's a cancellation fee
-    if (payment && cancellation.cancellationFee > 0) {
-      db.updatePayment(payment.id, {
-        status: 'refunded',
-      });
-    }
-
-    db.updateAppointment(req.params.id, { status: 'cancelled' });
-
-    auditLog({
-      action: 'appointment.cancelled',
-      entity: 'appointment',
-      entityId: appointment.id,
-      userId: req.userId!,
-      meta: {
-        cancellationFee: cancellation.cancellationFee,
-        refundAmount: cancellation.refundAmount,
-        canCancelFree: cancellation.canCancelFree,
-      },
-    });
-    
-    res.json({ 
-      message: 'Appointment cancelled',
-      cancellationFee: cancellation.cancellationFee,
-      refundAmount: cancellation.refundAmount,
-      canCancelFree: cancellation.canCancelFree,
-      reason: cancellation.reason,
-    });
+    await db.deleteAppointment(req.params.id);
+    res.json({ message: 'Appointment deleted' });
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
   }
