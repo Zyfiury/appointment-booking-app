@@ -17,23 +17,23 @@ function toMinutes(hhmm: string): number | null {
 function minutesToTime(mins: number): string {
   const h = Math.floor(mins / 60);
   const m = mins % 60;
-  return `${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}`;
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
 }
 
 router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const appointments = await db.getAppointments(req.userId!, req.userRole!);
-    const appointmentsWithDetails = await Promise.all(appointments.map(async (apt) => {
-      const customer = await db.getUserById(apt.customerId);
-      const provider = await db.getUserById(apt.providerId);
-      const service = await db.getServiceById(apt.serviceId);
+    const appointments = db.getAppointments(req.userId!, req.userRole!);
+    const appointmentsWithDetails = appointments.map((apt) => {
+      const customer = db.getUserById(apt.customerId);
+      const provider = db.getUserById(apt.providerId);
+      const service = db.getServiceById(apt.serviceId);
       return {
         ...apt,
         customer: customer ? { id: customer.id, name: customer.name, email: customer.email } : null,
         provider: provider ? { id: provider.id, name: provider.name, email: provider.email } : null,
         service: service ? { id: service.id, name: service.name, duration: service.duration, price: service.price } : null,
       };
-    }));
+    });
     res.json(appointmentsWithDetails);
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
@@ -55,7 +55,7 @@ router.get('/available-slots', async (req, res: Response) => {
       return res.status(400).json({ error: 'interval must be between 5 and 120 minutes' });
     }
 
-    const service = await db.getServiceById(serviceId);
+    const service = db.getServiceById(serviceId);
     if (!service) return res.status(404).json({ error: 'Service not found' });
     if (service.providerId !== providerId) {
       return res.status(400).json({ error: 'Service does not belong to provider' });
@@ -66,14 +66,16 @@ router.get('/available-slots', async (req, res: Response) => {
       return res.status(400).json({ error: 'Invalid date format. Expected yyyy-mm-dd' });
     }
 
-    const dayOfWeek = dayDate.toLocaleDateString('en-US', { weekday: 'lowercase' });
+    const dayOfWeek = dayDate.toLocaleDateString('en-US', { weekday: 'long' as const }).toLowerCase();
     // Prefer date-specific exceptions if present
-    const exception = await db.getAvailabilityExceptionByDate(providerId, date);
+    const exceptions = db.getAvailabilityExceptions(providerId);
+    const exception = exceptions.find(e => e.date === date);
     if (exception && exception.isAvailable === false) {
       return res.json([] as string[]);
     }
 
-    const providerAvailability = await db.getAvailabilityByDay(providerId, dayOfWeek);
+    const allAvailability = db.getAvailability(providerId);
+    const providerAvailability = allAvailability.find(a => a.dayOfWeek === dayOfWeek);
     if (!providerAvailability || !providerAvailability.isAvailable) {
       // No weekly schedule; but if exception exists and isAvailable=true, we still allow it
       if (!exception || exception.isAvailable !== true) {
@@ -106,7 +108,7 @@ router.get('/available-slots', async (req, res: Response) => {
     }
 
     // Fetch existing appointments for capacity checks (same provider, same date, same service)
-    const existing = await db.getAppointments(providerId, 'provider');
+    const existing = db.getAppointments(providerId, 'provider');
     const relevant = existing.filter(a => a.status !== 'cancelled' && a.serviceId === serviceId && a.date === date);
 
     const slots: string[] = [];
@@ -140,7 +142,7 @@ router.get('/available-slots', async (req, res: Response) => {
 
 router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const appointment = await db.getAppointmentById(req.params.id);
+    const appointment = db.getAppointmentById(req.params.id);
     if (!appointment) {
       return res.status(404).json({ error: 'Appointment not found' });
     }
@@ -149,14 +151,14 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    const customer = await db.getUserById(appointment.customerId);
-    const provider = await db.getUserById(appointment.providerId);
-    const service = await db.getServiceById(appointment.serviceId);
+    const customer = db.getUserById(appointment.customerId);
+    const providerUser = db.getUserById(appointment.providerId);
+    const service = db.getServiceById(appointment.serviceId);
 
     res.json({
       ...appointment,
       customer: customer ? { id: customer.id, name: customer.name, email: customer.email, phone: customer.phone } : null,
-      provider: provider ? { id: provider.id, name: provider.name, email: provider.email, phone: provider.phone } : null,
+      provider: providerUser ? { id: providerUser.id, name: providerUser.name, email: providerUser.email, phone: providerUser.phone } : null,
       service: service || null,
     });
   } catch (error) {
@@ -202,7 +204,7 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
     }
 
     // Get and validate service
-    const service = await db.getServiceById(serviceId);
+    const service = db.getServiceById(serviceId);
     if (!service) {
       return res.status(404).json({ error: 'Service not found' });
     }
@@ -213,14 +215,15 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
     }
 
     // Verify provider exists
-    const provider = await db.getUserById(providerId);
-    if (!provider || provider.role !== 'provider') {
+    const providerUser = db.getUserById(providerId);
+    if (!providerUser || providerUser.role !== 'provider') {
       return res.status(404).json({ error: 'Provider not found' });
     }
 
     // Check provider availability for the day
-    const dayOfWeek = appointmentDate.toLocaleDateString('en-US', { weekday: 'lowercase' });
-    const providerAvailability = await db.getAvailabilityByDay(providerId, dayOfWeek);
+    const dayOfWeek = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(appointmentDate).toLowerCase();
+    const allAvailability = db.getAvailability(providerId);
+    const providerAvailability = allAvailability.find(a => a.dayOfWeek === dayOfWeek);
     
     if (!providerAvailability || !providerAvailability.isAvailable) {
       return res.status(400).json({ error: 'Provider is not available on this day' });
@@ -257,7 +260,7 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
     }
 
     // Check service capacity - count concurrent appointments at the same time
-    const existingAppointments = await db.getAppointments(providerId, 'provider');
+    const existingAppointments = db.getAppointments(providerId, 'provider');
     const appointmentDateTime = new Date(`${date}T${time}`);
     const serviceEndTime = new Date(appointmentDateTime.getTime() + service.duration * 60000);
     
@@ -273,13 +276,14 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
     });
 
     // Check if capacity is exceeded
-    if (concurrentAppointments.length >= service.capacity) {
+    const serviceCapacity = (service.capacity !== undefined && service.capacity !== null) ? service.capacity : 1;
+    if (concurrentAppointments.length >= serviceCapacity) {
       return res.status(400).json({ 
-        error: `This time slot is full. Service capacity: ${service.capacity} concurrent appointment(s). Please choose another time.` 
+        error: `This time slot is full. Service capacity: ${serviceCapacity} concurrent appointment(s). Please choose another time.` 
       });
     }
 
-    const appointment = await db.createAppointment({
+    const appointment = db.createAppointment({
       customerId: req.userId!,
       providerId,
       serviceId,
@@ -289,13 +293,13 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
       notes: notes ? notes.trim() : null,
     });
 
-    const customer = await db.getUserById(appointment.customerId);
-    const provider = await db.getUserById(appointment.providerId);
+    const customer = db.getUserById(appointment.customerId);
+    // providerUser already defined above, reuse it
 
     res.status(201).json({
       ...appointment,
       customer: customer ? { id: customer.id, name: customer.name, email: customer.email } : null,
-      provider: provider ? { id: provider.id, name: provider.name, email: provider.email } : null,
+      provider: providerUser ? { id: providerUser.id, name: providerUser.name, email: providerUser.email } : null,
       service,
     });
   } catch (error) {
@@ -306,7 +310,7 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
 
 router.patch('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const appointment = await db.getAppointmentById(req.params.id);
+    const appointment = db.getAppointmentById(req.params.id);
     if (!appointment) {
       return res.status(404).json({ error: 'Appointment not found' });
     }
@@ -337,7 +341,7 @@ router.patch('/:id', authenticate, async (req: AuthRequest, res: Response) => {
       }
 
       // Validate date/time and enforce availability + capacity using the same rules as booking
-      const service = await db.getServiceById(appointment.serviceId);
+      const service = db.getServiceById(appointment.serviceId);
       if (!service) return res.status(404).json({ error: 'Service not found' });
 
       const apptDate = new Date(`${newDate}T${newTime}`);
@@ -349,12 +353,14 @@ router.patch('/:id', authenticate, async (req: AuthRequest, res: Response) => {
         return res.status(400).json({ error: 'Appointment must be scheduled for a future date and time' });
       }
 
-      const dayOfWeek = apptDate.toLocaleDateString('en-US', { weekday: 'lowercase' });
-      const exception = await db.getAvailabilityExceptionByDate(appointment.providerId, newDate);
+      const dayOfWeek = apptDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+      const exceptions = db.getAvailabilityExceptions(appointment.providerId);
+      const exception = exceptions.find(e => e.date === newDate);
       if (exception && exception.isAvailable === false) {
         return res.status(400).json({ error: 'Provider is not available on this date' });
       }
-      const providerAvailability = await db.getAvailabilityByDay(appointment.providerId, dayOfWeek);
+      const allAvailability = db.getAvailability(appointment.providerId);
+      const providerAvailability = allAvailability.find(a => a.dayOfWeek === dayOfWeek);
       if (!providerAvailability || !providerAvailability.isAvailable) {
         if (!exception || exception.isAvailable !== true) {
           return res.status(400).json({ error: 'Provider is not available on this day' });
@@ -392,7 +398,7 @@ router.patch('/:id', authenticate, async (req: AuthRequest, res: Response) => {
       }
 
       // Capacity check (exclude this appointment itself)
-      const existingAppointments = await db.getAppointments(appointment.providerId, 'provider');
+      const existingAppointments = db.getAppointments(appointment.providerId, 'provider');
       const startDt = new Date(`${newDate}T${newTime}`);
       const endDt = new Date(startDt.getTime() + service.duration * 60000);
       const concurrent = existingAppointments.filter(a => {
@@ -403,7 +409,8 @@ router.patch('/:id', authenticate, async (req: AuthRequest, res: Response) => {
         const aEnd = new Date(aStart.getTime() + service.duration * 60000);
         return startDt < aEnd && endDt > aStart;
       }).length;
-      if (concurrent >= (service.capacity || 1)) {
+      const serviceCapacity = (service.capacity !== undefined && service.capacity !== null) ? service.capacity : 1;
+      if (concurrent >= serviceCapacity) {
         return res.status(400).json({ error: 'This slot is full. Please choose another time.' });
       }
 
@@ -438,20 +445,20 @@ router.patch('/:id', authenticate, async (req: AuthRequest, res: Response) => {
       updates.notes = notes ? notes.trim() : null;
     }
 
-    const updated = await db.updateAppointment(req.params.id, updates);
+    const updated = db.updateAppointment(req.params.id, updates);
     if (!updated) {
       return res.status(404).json({ error: 'Appointment not found' });
     }
 
-    const customer = await db.getUserById(updated.customerId);
-    const provider = await db.getUserById(updated.providerId);
-    const service = await db.getServiceById(updated.serviceId);
+    const customer = db.getUserById(updated.customerId);
+    const updatedProvider = db.getUserById(updated.providerId);
+    const updatedService = db.getServiceById(updated.serviceId);
 
     res.json({
       ...updated,
       customer: customer ? { id: customer.id, name: customer.name, email: customer.email } : null,
-      provider: provider ? { id: provider.id, name: provider.name, email: provider.email } : null,
-      service: service || null,
+      provider: updatedProvider ? { id: updatedProvider.id, name: updatedProvider.name, email: updatedProvider.email } : null,
+      service: updatedService || null,
     });
   } catch (error) {
     console.error('Error updating appointment:', error);
@@ -461,7 +468,7 @@ router.patch('/:id', authenticate, async (req: AuthRequest, res: Response) => {
 
 router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const appointment = await db.getAppointmentById(req.params.id);
+    const appointment = db.getAppointmentById(req.params.id);
     if (!appointment) {
       return res.status(404).json({ error: 'Appointment not found' });
     }
@@ -470,7 +477,7 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    await db.deleteAppointment(req.params.id);
+    db.deleteAppointment(req.params.id);
     res.json({ message: 'Appointment deleted' });
   } catch (error) {
     res.status(500).json({ error: 'Server error' });

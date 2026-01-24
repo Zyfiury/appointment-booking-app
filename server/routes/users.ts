@@ -19,13 +19,14 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 
 router.get('/providers', async (req, res: Response) => {
   try {
-    const providers = await db.getProviders();
-    const reviews = await db.getReviews();
+    const allUsers = db.getUsers();
+    const providers = allUsers.filter(u => u.role === 'provider');
+    const reviews = db.getReviews();
     
-    res.json(providers.map(p => {
-      const providerReviews = reviews.filter(r => r.providerId === p.id);
+    res.json(providers.map((p: any) => {
+      const providerReviews = reviews.filter((r: any) => r.providerId === p.id);
       const rating = providerReviews.length > 0
-        ? providerReviews.reduce((sum, r) => sum + r.rating, 0) / providerReviews.length
+        ? providerReviews.reduce((sum: number, r: any) => sum + r.rating, 0) / providerReviews.length
         : null;
       
       return {
@@ -47,24 +48,46 @@ router.get('/providers', async (req, res: Response) => {
 
 router.get('/providers/search', async (req, res: Response) => {
   try {
-    let providers = await db.getProviders();
-    const reviews = await db.getReviews();
+    const allUsers = db.getUsers();
+    let providers = allUsers.filter(u => u.role === 'provider');
+    const reviews = db.getReviews();
+    const services = db.getServices();
     const { q, category, minPrice, maxPrice, minRating, latitude, longitude, radius, sortBy } = req.query;
 
     // Apply filters
     if (q) {
       const query = (q as string).toLowerCase();
-      providers = providers.filter(p => 
+      providers = providers.filter((p: any) => 
         p.name.toLowerCase().includes(query) ||
         p.email.toLowerCase().includes(query)
       );
     }
 
+    // Filter by category (providers who have services in this category)
+    if (category && typeof category === 'string') {
+      const providerIdsWithCategory = new Set(
+        services.filter((s: any) => s.category === category).map((s: any) => s.providerId)
+      );
+      providers = providers.filter(p => providerIdsWithCategory.has(p.id));
+    }
+
+    // Filter by price range (providers who have services in this price range)
+    if (minPrice || maxPrice) {
+      const min = minPrice ? parseFloat(minPrice as string) : 0;
+      const max = maxPrice ? parseFloat(maxPrice as string) : Infinity;
+      if (!isNaN(min) && !isNaN(max)) {
+        const providerIdsInPriceRange = new Set(
+          services.filter((s: any) => s.price >= min && s.price <= max).map((s: any) => s.providerId)
+        );
+        providers = providers.filter(p => providerIdsInPriceRange.has(p.id));
+      }
+    }
+
     if (minRating) {
-      providers = providers.filter(p => {
-        const providerReviews = reviews.filter(r => r.providerId === p.id);
+      providers = providers.filter((p: any) => {
+        const providerReviews = reviews.filter((r: any) => r.providerId === p.id);
         if (providerReviews.length === 0) return false;
-        const rating = providerReviews.reduce((sum, r) => sum + r.rating, 0) / providerReviews.length;
+        const rating = providerReviews.reduce((sum: number, r: any) => sum + r.rating, 0) / providerReviews.length;
         return rating >= parseFloat(minRating as string);
       });
     }
@@ -75,7 +98,7 @@ router.get('/providers/search', async (req, res: Response) => {
     const searchRadius = radius ? parseFloat(radius as string) : null;
 
     if (userLat !== null && userLng !== null && searchRadius !== null) {
-      providers = providers.filter(p => {
+      providers = providers.filter((p: any) => {
         if (p.latitude === undefined || p.longitude === undefined) return false;
         const distance = calculateDistance(userLat, userLng, p.latitude, p.longitude);
         return distance <= searchRadius;
@@ -83,10 +106,10 @@ router.get('/providers/search', async (req, res: Response) => {
     }
 
     // Add ratings and distance to providers
-    const providersWithRatings = providers.map(p => {
-      const providerReviews = reviews.filter(r => r.providerId === p.id);
+    const providersWithRatings = providers.map((p: any) => {
+      const providerReviews = reviews.filter((r: any) => r.providerId === p.id);
       const rating = providerReviews.length > 0
-        ? providerReviews.reduce((sum, r) => sum + r.rating, 0) / providerReviews.length
+        ? providerReviews.reduce((sum: number, r: any) => sum + r.rating, 0) / providerReviews.length
         : null;
       
       let distance: number | null = null;
@@ -110,15 +133,15 @@ router.get('/providers/search', async (req, res: Response) => {
 
     // Sort
     if (sortBy === 'rating') {
-      providersWithRatings.sort((a, b) => 
+      providersWithRatings.sort((a: any, b: any) => 
         (b.rating ?? 0) - (a.rating ?? 0)
       );
     } else if (sortBy === 'distance' && userLat !== null && userLng !== null) {
-      providersWithRatings.sort((a, b) => 
+      providersWithRatings.sort((a: any, b: any) => 
         (a.distance ?? Infinity) - (b.distance ?? Infinity)
       );
     } else if (sortBy === 'name') {
-      providersWithRatings.sort((a, b) => a.name.localeCompare(b.name));
+      providersWithRatings.sort((a: any, b: any) => a.name.localeCompare(b.name));
     }
 
     res.json(providersWithRatings);
@@ -129,26 +152,26 @@ router.get('/providers/search', async (req, res: Response) => {
 
 router.get('/providers/:id', async (req, res: Response) => {
   try {
-    const provider = await db.getProviderById(req.params.id);
-    if (!provider) {
+    const user = db.getUserById(req.params.id);
+    if (!user || user.role !== 'provider') {
       return res.status(404).json({ error: 'Provider not found' });
     }
-    const reviews = await db.getReviews();
-    const providerReviews = reviews.filter(r => r.providerId === provider.id);
+    const reviews = db.getReviews();
+    const providerReviews = reviews.filter((r: any) => r.providerId === user.id);
     const rating = providerReviews.length > 0
-      ? providerReviews.reduce((sum, r) => sum + r.rating, 0) / providerReviews.length
+      ? providerReviews.reduce((sum: number, r: any) => sum + r.rating, 0) / providerReviews.length
       : null;
     
     res.json({
-      id: provider.id,
-      name: provider.name,
-      email: provider.email,
-      phone: provider.phone,
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
       rating: rating ? Math.round(rating * 10) / 10 : null,
       reviewCount: providerReviews.length,
-      latitude: provider.latitude,
-      longitude: provider.longitude,
-      address: provider.address,
+      latitude: user.latitude,
+      longitude: user.longitude,
+      address: user.address,
     });
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
@@ -157,7 +180,7 @@ router.get('/providers/:id', async (req, res: Response) => {
 
 router.get('/profile', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const user = await db.getUserById(req.userId!);
+    const user = db.getUserById(req.userId!);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -255,7 +278,7 @@ router.patch('/profile', authenticate, async (req: AuthRequest, res: Response) =
       return res.status(400).json({ error: 'No valid fields to update' });
     }
 
-    const updated = await db.updateUser(req.userId!, updates);
+    const updated = db.updateUser(req.userId!, updates);
     if (!updated) {
       return res.status(404).json({ error: 'User not found' });
     }
