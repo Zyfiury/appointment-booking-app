@@ -66,7 +66,7 @@ router.get('/available-slots', async (req, res: Response) => {
       return res.status(400).json({ error: 'Invalid date format. Expected yyyy-mm-dd' });
     }
 
-    const dayOfWeek = dayDate.toLocaleDateString('en-US', { weekday: 'long' as const }).toLowerCase();
+    const dayOfWeek = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(dayDate).toLowerCase();
     // Prefer date-specific exceptions if present
     const exceptions = db.getAvailabilityExceptions(providerId);
     const exception = exceptions.find(e => e.date === date);
