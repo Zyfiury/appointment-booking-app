@@ -353,7 +353,7 @@ router.patch('/:id', authenticate, async (req: AuthRequest, res: Response) => {
         return res.status(400).json({ error: 'Appointment must be scheduled for a future date and time' });
       }
 
-      const dayOfWeek = apptDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+      const dayOfWeek = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(apptDate).toLowerCase();
       const exceptions = db.getAvailabilityExceptions(appointment.providerId);
       const exception = exceptions.find(e => e.date === newDate);
       if (exception && exception.isAvailable === false) {
