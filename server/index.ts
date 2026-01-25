@@ -10,6 +10,7 @@ import stripeRoutes from './routes/stripe';
 import availabilityRoutes from './routes/availability';
 import adminRoutes from './routes/admin';
 import policyRoutes from './routes/policies';
+import providerImageRoutes from './routes/provider_images';
 // Import database to trigger initialization
 import './data/database';
 
@@ -30,6 +31,7 @@ app.use('/api/stripe', stripeRoutes);
 app.use('/api/availability', availabilityRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/policies', policyRoutes);
+app.use('/api/provider-images', providerImageRoutes);
 
 app.get('/api/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', message: 'Server is running' });

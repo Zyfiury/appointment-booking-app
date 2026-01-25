@@ -5,7 +5,33 @@ import { createReport } from '../utils/reports';
 
 const router = express.Router();
 
-// Get provider's own images (authenticated)
+// Get provider images by ID (public) - must come before /:id routes
+router.get('/provider/:providerId', (req, res: Response) => {
+  try {
+    const { providerId } = req.params;
+    const images = db.getProviderImages(providerId);
+    res.json(images);
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get provider images by ID (public) - direct route
+router.get('/:providerId', (req, res: Response) => {
+  try {
+    const { providerId } = req.params;
+    // Skip if it's trying to access authenticated routes
+    if (providerId === '' || providerId === 'provider') {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    const images = db.getProviderImages(providerId);
+    res.json(images);
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get provider's own images (authenticated) - must come last to avoid conflicts
 router.get('/', authenticate, (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId!;
@@ -16,17 +42,6 @@ router.get('/', authenticate, (req: AuthRequest, res: Response) => {
     }
 
     const images = db.getProviderImages(userId);
-    res.json(images);
-  } catch (error) {
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// Get provider images (public)
-router.get('/provider/:providerId', (req, res: Response) => {
-  try {
-    const { providerId } = req.params;
-    const images = db.getProviderImages(providerId);
     res.json(images);
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
