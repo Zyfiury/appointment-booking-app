@@ -400,11 +400,72 @@ router.post('/create-test-providers', async (req: express.Request, res: Response
           });
         }
 
+        // Add sample photos for each provider (using placeholder images)
+        const categoryImages: { [key: string]: string[] } = {
+          'Barber': [
+            'https://images.unsplash.com/photo-1621605815971-fbc98d665033?w=800',
+            'https://images.unsplash.com/photo-1562322140-8baeececf3df?w=800',
+            'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=800',
+          ],
+          'Hair': [
+            'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=800',
+            'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=800',
+            'https://images.unsplash.com/photo-1516975080664-ed2fc6a32937?w=800',
+          ],
+          'Beauty': [
+            'https://images.unsplash.com/photo-1516975080664-ed2fc6a32937?w=800',
+            'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=800',
+            'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=800',
+          ],
+          'Massage': [
+            'https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=800',
+            'https://images.unsplash.com/photo-1600334129128-685c5582fd35?w=800',
+            'https://images.unsplash.com/photo-1600334097273-4947fc4e0f50?w=800',
+          ],
+          'Fitness': [
+            'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=800',
+            'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=800',
+            'https://images.unsplash.com/photo-1518611012118-696072aa579a?w=800',
+          ],
+          'Dental': [
+            'https://images.unsplash.com/photo-1606811971618-4486d14f3f99?w=800',
+            'https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=800',
+            'https://images.unsplash.com/photo-1606811841689-23dfddce3e95?w=800',
+          ],
+          'Therapy': [
+            'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=800',
+            'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=800',
+            'https://images.unsplash.com/photo-1559757175-0eb30cd8c063?w=800',
+          ],
+          'Medical': [
+            'https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?w=800',
+            'https://images.unsplash.com/photo-1559757175-0eb30cd8c063?w=800',
+            'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=800',
+          ],
+          'Home Services': [
+            'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=800',
+            'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800',
+            'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800',
+          ],
+        };
+
+        const images = categoryImages[providerData.category] || categoryImages['Beauty'];
+        for (let i = 0; i < images.length; i++) {
+          db.addProviderImage({
+            providerId: provider.id,
+            url: images[i],
+            caption: `${providerData.name} - ${providerData.category} Service`,
+            type: 'gallery',
+            order: i,
+          });
+        }
+
         results.push({
           status: 'created',
           provider: providerData.name,
           email: providerData.email,
           services: services,
+          images: images.length,
         });
         created++;
       } catch (error: any) {

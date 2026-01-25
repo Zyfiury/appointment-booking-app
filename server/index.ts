@@ -9,6 +9,7 @@ import reviewRoutes from './routes/reviews';
 import stripeRoutes from './routes/stripe';
 import availabilityRoutes from './routes/availability';
 import adminRoutes from './routes/admin';
+import policyRoutes from './routes/policies';
 // Import database to trigger initialization
 import './data/database';
 
@@ -28,6 +29,7 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/stripe', stripeRoutes);
 app.use('/api/availability', availabilityRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/policies', policyRoutes);
 
 app.get('/api/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', message: 'Server is running' });
